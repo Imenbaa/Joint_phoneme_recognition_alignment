@@ -1,0 +1,31 @@
+# data, models and outputs
+work/
+runs/
+checkpoint-*/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.arrow
+*.pkl
+*.npy
+*.wav
+*.flac
+events.out.tfevents.*
+*.log
+
+# notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+
+# OS
+.DS_Store
+._*

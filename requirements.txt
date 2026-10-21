@@ -1,0 +1,17 @@
+# Versions used to train the models (Python 3.10).
+torch==2.11.0
+torchaudio==2.11.0
+transformers==4.41.2
+accelerate==0.30.1
+datasets==2.21.0
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.3.3
+librosa==0.11.0
+soundfile==0.13.1
+editdistance==0.8.1
+Levenshtein==0.27.3
+jiwer==4.0.0
+tensorboard==2.20.0
+matplotlib==3.10.8
+pillow==12.2.0
