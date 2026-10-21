@@ -90,8 +90,8 @@ At inference the model aligns its own CTC decode, so it needs no transcription.
 Python ≥ 3.10 and a CUDA GPU for training.
 
 ```bash
-git clone <this repository> reco_align_models
-cd reco_align_models
+git clone https://github.com/Imenbaa/Joint_phoneme_recognition_alignment.git
+cd Joint_phoneme_recognition_alignment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # versions used to train the models
 pip install -e .                    # the reco_align package
