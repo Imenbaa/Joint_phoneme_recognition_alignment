@@ -219,7 +219,7 @@ reference phone intervals:
 {"files": {
   "rec01": {
     "wav": "/path/to/rec01.wav",
-    "chunks": [{"start": 0.0, "end": 14.2}, {"start": 15.1, "end": 29.8}],
+    "chunks": [{"start": 0.0, "end": 9.8}, {"start": 15.1, "end": 29.8}],
     "ref_intervals": [{"phoneme": "b", "start": 0.31, "end": 0.38}, ...],
     "style": "spontaneous",
     "pause_intervals": [[3.10, 3.42], ...],
@@ -231,11 +231,37 @@ reference phone intervals:
 | field | required | meaning |
 |---|---|---|
 | `wav` | yes | the recording; any sampling rate, mono or stereo |
-| `chunks` | yes | the segments the model sees, in seconds (for example from a voice activity detector) |
+| `chunks` | yes | the segments the model sees, in seconds (see [Building a manifest](#building-a-manifest)) |
 | `ref_intervals` | yes | the reference phones and their intervals |
 | `style` | no | groups the results by speaking style |
 | `pause_intervals` | no | reference pauses; enables the silence scores |
 | `excluded_intervals` | no | regions ignored by the silence scores |
+
+### Building a manifest
+
+`make_manifest.py` builds a manifest from a folder of recordings and Praat TextGrids that have a
+phone tier. The chunks come from the [WhisperX](https://github.com/m-bain/whisperX) voice
+activity detector (pyannote segmentation, onset 0.5 / offset 0.363). Speech is cut and merged
+into chunks of at most 10 s, with pauses kept inside a chunk. WhisperX pins its own `torch`
+version, so install it in a separate environment:
+
+```bash
+python -m venv .venv-manifest && source .venv-manifest/bin/activate
+pip install -r requirements-manifest.txt
+
+python make_manifest.py --audio_dir wav/ --textgrid_dir textgrids/ --tier phones \
+    --phone_map phone_map.json --skip_labels "<noise>" "<unk>" \
+    --style=_read=read,_spont=spontaneous --out manifest.json
+```
+
+| option | meaning |
+|---|---|
+| `--textgrid_suffix` | TextGrid name = audio id + suffix (default `.TextGrid`). Write `--textgrid_suffix=-x.TextGrid` when it starts with `-` |
+| `--phone_map` | JSON `{"tier label": "phone"}` that rewrites the reference labels into the model's phone set (`vocab.json`). Unmapped labels are kept |
+| `--pause_labels` | labels of pauses (default: empty, `SIL`, `sil`, `spn`, `SP`, `<SIL>`, `_`). They become `pause_intervals` |
+| `--skip_labels` | other non-phone labels (noise, unknown words, ...). They become `excluded_intervals` |
+| `--style` | `SUBSTRING=STYLE` rules on the file id, comma-separated, for per-style results |
+| `--max_chunk_dur` | maximum chunk length in seconds (default 10) |
 
 ```bash
 python evaluate.py --manifest manifest.json --out_dir eval/ \
@@ -288,6 +314,7 @@ python tests/test_model.py    # full model on a tiny random wav2vec2: losses, gr
 train_ctc.py              stages 0-2: data preparation, CTC fine-tuning (20 or 10 ms)
 train_aligner.py          stage 3: joint recognition + alignment model
 evaluate.py               alignment evaluation on a manifest
+make_manifest.py          evaluation manifest from audio + TextGrids (WhisperX VAD chunks)
 recipes/                  one script per stage, with the settings of the trained models
 reco_align/
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers
@@ -298,6 +325,7 @@ reco_align/
     attention_eval.py     manifest loop, DTW decode, frame timing
     sil_eval.py           SIL Viterbi decode and silence scores
     ctcfa_eval.py         CTC forced-alignment baseline
+    vad_chunking.py       WhisperX VAD chunking (used by make_manifest.py)
     metrics.py            boundary F1, errors, PER
 tests/
 ```

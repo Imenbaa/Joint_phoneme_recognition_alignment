@@ -1,0 +1,6 @@
+# Optional: building evaluation manifests (make_manifest.py).
+# Install in a separate environment: whisperx pins its own torch version.
+whisperx==3.8.6
+tgt==1.5
+soundfile
+librosa
