@@ -1,4 +1,4 @@
-# reco_align_models
+# A joint phoneme recognition and alignment model
 
 Joint **phone recognition and phone alignment** for French speech, with one wav2vec2 model.
 A CTC head transcribes the speech into phones. A cross-attention aligner, trained in the same
