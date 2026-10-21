@@ -87,7 +87,7 @@ At inference the model aligns its own CTC decode, so it needs no transcription.
 
 ## Installation
 
-Python ≥ 3.10 and a CUDA GPU for training (stage 1 used 2 GPUs, stages 2 and 3 one GPU each).
+Python ≥ 3.10 and a CUDA GPU for training.
 
 ```bash
 git clone <this repository> reco_align_models
