@@ -302,6 +302,11 @@ reco_align/
 tests/
 ```
 
+## Generative AI Use Disclosure
+
+The code in this repository was refactored, organised and refined with the aid of
+[Claude Code](https://claude.com/claude-code) (Anthropic).
+
 ## License
 
 MIT, see `LICENSE`.
