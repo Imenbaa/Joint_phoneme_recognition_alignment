@@ -15,3 +15,4 @@ jiwer==4.0.0
 tensorboard==2.20.0
 matplotlib==3.10.8
 pillow==12.2.0
+silero-vad==6.2.0          # transcribe.py: where to cut long recordings
