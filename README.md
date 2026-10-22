@@ -117,13 +117,22 @@ The scripts at the repository root (`train_ctc.py`, `train_aligner.py`, `evaluat
 
 `reco-align-transcribe` (or `python transcribe.py` from the repository root) gives, for each
 recording, the phones the model hears, their boundaries, the pauses, and the model's five best
-candidates for each phone. It needs a stage-3 checkpoint (joint aligner with latent silence, see
-[Training](#training)). It runs on GPU or CPU.
+candidates for each phone. It runs on GPU or CPU.
+
+**Download the model**: [`aligner_10ms_sil_alpha0.1.zip`](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip)
+(1.2 GB, [release v0.1.0](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/tag/v0.1.0),
+licence CC BY-NC 4.0), then unzip it:
 
 ```bash
-reco-align-transcribe --model $WORK_DIR/aligner_10ms_sil_alpha0.1/checkpoint-43000 \
+curl -LO https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip
+unzip aligner_10ms_sil_alpha0.1.zip
+reco-align-transcribe --model aligner_10ms_sil_alpha0.1 \
     -o results/ recording1.wav recording2.wav recordings_folder/
 ```
+
+Any stage-3 checkpoint you train yourself (joint aligner with latent silence, see
+[Training](#training)) works the same way, e.g.
+`--model $WORK_DIR/aligner_10ms_sil_alpha0.1/checkpoint-43000`.
 
 Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo (resampled to 16 kHz and
 downmixed). A folder means every audio file in it.
@@ -171,10 +180,9 @@ label is left at each cut (about every 10 s) and at the start and end of the rec
 
 ### Training corpus
 
-The models were trained on the French broadcast-news corpora **ESTER 1, ESTER 2 and EPAC**
-(distributed by ELRA), with phone transcriptions. Utterances containing an unknown word were
-removed. Any French (or other) corpus with phone-level transcriptions can be used in the same
-format.
+The models were trained on French speech with phone transcriptions. Utterances containing an
+unknown word were removed. Any French (or other) corpus with phone-level transcriptions can be used
+in the same format.
 
 ### Format
 
@@ -413,4 +421,5 @@ The code in this repository was refactored, organised and refined with the aid o
 
 ## License
 
-MIT, see `LICENSE`.
+Code: MIT, see `LICENSE`. Released model weights: [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+(non-commercial use, with attribution).
