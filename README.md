@@ -5,12 +5,15 @@ A CTC head transcribes the speech into phones. A cross-attention aligner, traine
 network, places each phone in time, with optional silences. The same model gives the phone
 sequence and its segmentation, at 10 ms resolution.
 
-This repository has the code to train the models from scratch and to evaluate them as aligners.
+This repository has the code to train the models from scratch, to evaluate them as aligners, and
+to transcribe recordings into Praat TextGrids (phones, boundaries, pauses and the model's top-5
+candidates for each phone), with no transcript needed.
 
 ## Contents
 
 - [Models](#models)
 - [Installation](#installation)
+- [Transcribing recordings](#transcribing-recordings)
 - [Data](#data)
 - [Training](#training)
 - [Evaluation](#evaluation)
@@ -97,8 +100,63 @@ pip install -r requirements.txt     # versions used to train the models
 pip install -e .                    # the reco_align package
 ```
 
-The scripts at the repository root (`train_ctc.py`, `train_aligner.py`, `evaluate.py`) also run
-from the repository root without `pip install -e .`.
+The scripts at the repository root (`train_ctc.py`, `train_aligner.py`, `evaluate.py`,
+`transcribe.py`) also run from the repository root without `pip install -e .`.
+`pip install -e .` also installs the `reco-align-transcribe` command.
+
+## Transcribing recordings
+
+`reco-align-transcribe` (or `python transcribe.py` from the repository root) gives, for each
+recording, the phones the model hears, their boundaries, the pauses, and the model's five best
+candidates for each phone. It needs a stage-3 checkpoint (joint aligner with latent silence, see
+[Training](#training)). It runs on GPU or CPU.
+
+```bash
+reco-align-transcribe --model $WORK_DIR/aligner_10ms_sil_alpha0.1/checkpoint-43000 \
+    -o results/ recording1.wav recording2.wav recordings_folder/
+```
+
+Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo (resampled to 16 kHz and
+downmixed). A folder means every audio file in it.
+
+For each recording, in `-o`:
+
+| file | content |
+|---|---|
+| `<name>.TextGrid` | Praat interval tiers, all covering the whole recording |
+| `<name>.csv` | one row per phone: `start`, `end`, `phone`, then `top1`, `p1` ... `top5`, `p5` |
+
+| tier | label of each interval |
+|---|---|
+| `phones` | the recognised phone (empty between phones) |
+| `confidence` | probability of that phone |
+| `top2` ... `top5` | the next candidates, as `symbol probability` (e.g. `p 0.050`) |
+| `pauses` | `SIL` on every pause the model detected |
+
+| option | meaning |
+|---|---|
+| `--symbols ipa` (default) / `model` | `ipa` writes the nasal vowels and œ in IPA (`ɑ̃ ɛ̃ ɔ̃ œ`); `model` keeps the model's one-character codes (`@ 1 § 9`) |
+| `--phone_map map.json` | your own labels, applied last, e.g. `{"ə": "ø"}` for a corpus that writes the schwa `ø` |
+| `--max_chunk 10` | longest piece of audio the model sees at once, in seconds |
+| `--vocab_path` | phone vocabulary (default: `vocab.json` in the checkpoint) |
+| `--device cuda` / `cpu` | default: `cuda` when available |
+
+How it works (`reco_align/transcribe.py`):
+1. The recording is cut into pieces of at most 10 s, back to back, so no audio is dropped.
+   [Silero VAD](https://github.com/snakers4/silero-vad) finds the pauses; each cut goes in the
+   middle of the latest pause within 10 s (or, with no pause, where speech is least likely).
+2. For each piece: the CTC head gives the phones; a Viterbi pass over
+   `[SIL] p1 [SIL] p2 ... [SIL]` on the aligner gives their boundaries and the pauses, as in the
+   evaluation. A pause cut in two by a piece boundary is joined back into one.
+3. The candidates of a phone are the CTC posteriors at the frame where that phone is most
+   probable, over the phone symbols only, renormalised to sum to 1.
+
+Read the probabilities with care: they are the model's own and are **not calibrated**. The top-1
+is often given about 0.99 even when it is wrong, but the **order** of the candidates is
+informative: when the top-1 is wrong, the right phone is often 2nd or 3rd.
+
+The model cannot see the first and last ~10 ms of each piece, so a gap of 15 to 25 ms with no
+label is left at each cut (about every 10 s) and at the start and end of the recording.
 
 ## Data
 
@@ -292,7 +350,9 @@ python evaluate.py --manifest manifest.json --out_dir eval/ --method ctcfa_conti
 - duration fidelity: slope and correlation of hypothesis versus reference phone durations
   (`_sp`: phones with no pause on either side);
 - for SIL models with `pause_intervals`: frame-level SIL precision/recall/F1 and pause-level F1
-  at IoU ≥ 0.5.
+  at IoU ≥ 0.5, over each whole file: a pause cut by a chunk boundary counts once, and audio left
+  out between chunks counts as silence (`sil_eval.evaluate(..., sil_mode="chunk")` gives the
+  older per-chunk scores, which count such a pause as two false silences).
 
 The script writes these files to `--out_dir`:
 - per-file, per-style and global CSVs;
@@ -306,7 +366,11 @@ CPU only. They need no data or pretrained weights:
 ```bash
 python tests/test_sil_fs.py   # latent-SIL DP vs brute force, gradients, batching, == ForwardSumLoss without SIL
 python tests/test_model.py    # full model on a tiny random wav2vec2: losses, gradient routing, SIL, L_energy, decoders
+python tests/test_transcribe.py   # chunking, pause joining, candidates, TextGrid/CSV, end to end on a tiny model
 ```
+
+The end-to-end part of `test_transcribe.py` needs `silero-vad` (in `requirements.txt`) and is
+skipped without it.
 
 ## Repository layout
 
@@ -315,8 +379,11 @@ train_ctc.py              stages 0-2: data preparation, CTC fine-tuning (20 or 1
 train_aligner.py          stage 3: joint recognition + alignment model
 evaluate.py               alignment evaluation on a manifest
 make_manifest.py          evaluation manifest from audio + TextGrids (WhisperX VAD chunks)
+transcribe.py             recordings -> TextGrids (= reco-align-transcribe)
 recipes/                  one script per stage, with the settings of the trained models
 reco_align/
+  transcribe.py           Silero chunking, decoding, top-5 candidates, TextGrid / CSV writers
+  transcribe_cli.py       command line of transcribe.py
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers
   pool_alignment.py       CTC + aligner with pooled phone keys, latent SIL, gradient routing
   model.py                + masked reconstruction (L_m), EMA quantizer, L_energy
