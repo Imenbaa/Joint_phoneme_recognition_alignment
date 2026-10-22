@@ -20,9 +20,9 @@ frame_time_offset_s): 20 ms / +2.5 ms, 10 ms / +7.5 ms.
 
 Metrics: F1@10/20/50, MedianBE, P90, PER (metrics.compute_metrics), duration
 slope/corr (all phones, and in-speech phones only), and, when the manifest has
-pause_intervals, SIL against the reference pauses: frame precision/recall/F1
-(frame centres, inside chunks, excluded_intervals ignored) and pause-interval
-P/R/F1 at IoU >= 0.5.
+pause_intervals, SIL against the reference pauses over each whole file (a pause
+cut by a chunk edge counts once): frame precision/recall/F1 (frame centres,
+excluded_intervals ignored) and pause-interval P/R/F1 at IoU >= 0.5.
 """
 import itertools
 import os
@@ -202,40 +202,87 @@ def _score(store, tag=""):
             f"MedianBE{tag}": col("median", "BE"), f"P90{tag}": col("P90"), f"PER{tag}": col("PER")}
 
 
-def sil_scores(manifest, sil_runs, chunks, iou=0.5):
-    """SIL vs reference pauses (manifest pause_intervals)."""
+def _sil_timeline(phones, end):
+    """Whole-file SIL runs: the time in [0, end] not covered by a hypothesis phone.
+    SIL-Viterbi gives every decoded frame to a phone or to SIL, so this is the
+    decoded SIL with a pause cut by a chunk edge joined back into one run, and
+    audio left out between chunks counted as SIL."""
+    runs, cur = [], 0.0
+    for p in sorted(phones, key=lambda z: z["start"]):
+        if p["start"] - cur >= HOP / 2:
+            runs.append((cur, min(p["start"], end)))
+        cur = max(cur, p["end"])
+    if end - cur >= HOP / 2:
+        runs.append((cur, end))
+    return [r for r in runs if r[1] - r[0] >= HOP / 2]
+
+
+def _frame_counts(a, b, P, X, R):
+    """(tp, fp, fn) of SIL frames vs reference pause frames, frame centres in [a, b)."""
+    c = np.arange(a, b - HOP / 2, HOP) + CENTRE
+    c = c[c < b]
+    keep = ~np.any((X[:, :1] <= c) & (c < X[:, 1:]), axis=0) if len(X) else np.ones(len(c), bool)
+    ref = np.any((P[:, :1] <= c) & (c < P[:, 1:]), axis=0) if len(P) else np.zeros(len(c), bool)
+    hyp = np.any((R[:, :1] <= c) & (c < R[:, 1:]), axis=0) if len(R) else np.zeros(len(c), bool)
+    return int((hyp & ref & keep).sum()), int((hyp & ~ref & keep).sum()), int((~hyp & ref & keep).sum())
+
+
+def _pause_matches(refs, hyps, iou):
+    """Reference pauses matched one-to-one (greedy) by a SIL run at IoU >= iou."""
+    used, m = set(), 0
+    for r in refs:
+        best, bj = 0.0, None
+        for j, h in enumerate(hyps):
+            if j in used:
+                continue
+            inter = max(0.0, min(r[1], h[1]) - max(r[0], h[0]))
+            if inter <= 0:
+                continue
+            u = max(r[1], h[1]) - min(r[0], h[0])
+            if inter / u > best:
+                best, bj = inter / u, j
+        if bj is not None and best >= iou:
+            used.add(bj)
+            m += 1
+    return m
+
+
+def sil_scores(manifest, sil_runs, chunks, store=None, iou=0.5, mode="file"):
+    """SIL vs reference pauses (manifest pause_intervals).
+
+    mode "file" (default, needs store = the SIL-Viterbi alignment store): one SIL
+      timeline per file (_sil_timeline over [0, last chunk end]), frames over the
+      whole file, every reference pause.
+    mode "chunk" (the scores before Oct 2026, kept to compare with older runs):
+      SIL runs per chunk, frames inside chunks only, reference pauses only if
+      inside one chunk. Biased low by cuts: a pause crossing a chunk edge leaves
+      the reference while the SIL on each side of the edge counts as a false
+      positive, so the more chunks, the lower the pause precision."""
+    if mode not in ("file", "chunk"):
+        raise ValueError(f"mode {mode!r}: 'file' or 'chunk'")
+    if mode == "file" and store is None:
+        raise ValueError("mode 'file' needs the alignment store (hypothesis phones)")
     tp = fp = fn = 0
     m_tp = n_hyp = n_ref = 0
     for nm, runs in sil_runs.items():
+        if not chunks[nm]:
+            continue
         meta = manifest["files"][nm]
         P = np.asarray([p[:2] for p in meta.get("pause_intervals", [])], float).reshape(-1, 2)
         X = np.asarray([p[:2] for p in meta.get("excluded_intervals", [])], float).reshape(-1, 2)
-        for a, b in chunks[nm]:
-            c = np.arange(a, b - HOP / 2, HOP) + CENTRE
-            c = c[c < b]
-            keep = ~np.any((X[:, :1] <= c) & (c < X[:, 1:]), axis=0) if len(X) else np.ones(len(c), bool)
-            ref = np.any((P[:, :1] <= c) & (c < P[:, 1:]), axis=0) if len(P) else np.zeros(len(c), bool)
-            R = np.asarray(runs, float).reshape(-1, 2)
-            hyp = np.any((R[:, :1] <= c) & (c < R[:, 1:]), axis=0) if len(R) else np.zeros(len(c), bool)
-            tp += int((hyp & ref & keep).sum()); fp += int((hyp & ~ref & keep).sum()); fn += int((~hyp & ref & keep).sum())
-        # interval level: reference pauses inside a chunk, one-to-one greedy at IoU >= iou
-        refs = [p for p in P if any(a <= p[0] and p[1] <= b for a, b in chunks[nm])]
-        hyps = list(runs)
+        if mode == "file":
+            end = chunks[nm][-1][1]
+            hyps = _sil_timeline(store[nm]["hyp_intervals"], end)
+            spans, refs = [(0.0, end)], list(P)
+        else:
+            hyps, spans = list(runs), chunks[nm]
+            refs = [p for p in P if any(a <= p[0] and p[1] <= b for a, b in spans)]
+        R = np.asarray(hyps, float).reshape(-1, 2)
+        for a, b in spans:
+            t, f_, n = _frame_counts(a, b, P, X, R)
+            tp += t; fp += f_; fn += n
         n_ref += len(refs); n_hyp += len(hyps)
-        used = set()
-        for r in refs:
-            best, bj = 0.0, None
-            for j, h in enumerate(hyps):
-                if j in used:
-                    continue
-                inter = max(0.0, min(r[1], h[1]) - max(r[0], h[0]))
-                if inter <= 0:
-                    continue
-                u = max(r[1], h[1]) - min(r[0], h[0])
-                if inter / u > best:
-                    best, bj = inter / u, j
-            if bj is not None and best >= iou:
-                used.add(bj); m_tp += 1
+        m_tp += _pause_matches(refs, hyps, iou)
     f = lambda p, r: 2 * p * r / (p + r) if p + r > 0 else 0.0
     pf, rf = tp / max(tp + fp, 1), tp / max(tp + fn, 1)
     pi, ri = m_tp / max(n_hyp, 1), m_tp / max(n_ref, 1)
@@ -245,8 +292,9 @@ def sil_scores(manifest, sil_runs, chunks, iou=0.5):
 
 
 def evaluate(model, feature_extractor, tokenizer, manifest, device="cuda", max_files=None,
-             positions=None, offset=None, with_dtw=True):
-    """All metrics as a flat dict (keys suffixed _dtw for the plain DTW decode)."""
+             positions=None, offset=None, with_dtw=True, sil_mode="file"):
+    """All metrics as a flat dict (keys suffixed _dtw for the plain DTW decode).
+    sil_mode: pause scoring, see sil_scores."""
     store, store_dtw, runs, chunks = run_manifest_sil(
         model, feature_extractor, tokenizer, manifest, device, max_files, positions, offset, with_dtw)
     has_pauses = any("pause_intervals" in m for m in manifest["files"].values())
@@ -256,7 +304,7 @@ def evaluate(model, feature_extractor, tokenizer, manifest, device="cuda", max_f
     res.update(E.duration_fidelity(store, align_sequences))
     res.update(duration_fidelity_inspeech(store, pauses))
     if has_pauses:
-        res.update(sil_scores(manifest, runs, chunks))
+        res.update(sil_scores(manifest, runs, chunks, store, mode=sil_mode))
     if store_dtw is not None:
         res.update(_score(store_dtw, "_dtw"))
         res.update({f"{k}_dtw": v for k, v in E.duration_fidelity(store_dtw, align_sequences).items()})
