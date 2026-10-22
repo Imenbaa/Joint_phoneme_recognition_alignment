@@ -58,11 +58,41 @@ def _silero():
     return _VAD
 
 
+def plan_chunks(speech, dur, max_chunk=10.0, min_gap=0.1, quietest=None):
+    """[(start, end)] in seconds covering [0, dur], back to back, each at most
+    max_chunk long, given the speech segments [(start, end)] of a VAD.
+
+    From each position the cut goes to the middle of the latest non-speech
+    stretch (>= min_gap) within max_chunk (clamped to the window). With none,
+    quietest(lo, hi) gives the cut (the least speech-like time in [lo, hi],
+    the second half of the window); quietest None -> cut at max_chunk."""
+    if dur <= max_chunk:
+        return [(0.0, dur)]
+    gaps, prev = [], 0.0
+    for s, e in sorted(speech):
+        if s - prev >= min_gap:
+            gaps.append((prev, s))
+        prev = max(prev, e)
+    if dur - prev >= min_gap:
+        gaps.append((prev, dur))
+    out, pos = [], 0.0
+    while dur - pos > max_chunk:
+        hi = pos + max_chunk
+        cand = [min(max((gs + ge) / 2, gs, pos + 1e-3), ge, hi) for gs, ge in gaps if ge > pos + 1e-3 and gs < hi]
+        cand = [c for c in cand if pos + 1e-3 < c <= hi]
+        if cand:
+            cut = max(cand)
+        else:                                   # no pause within max_chunk: least speech-like time
+            cut = hi if quietest is None else quietest(pos + max_chunk / 2, hi)
+        out.append((pos, cut))
+        pos = cut
+    out.append((pos, dur))
+    return out
+
+
 def chunk_bounds(wav, sr, max_chunk=10.0, min_gap=0.1):
-    """[(start, end)] in seconds covering the whole recording, back to back, each
-    at most max_chunk long. Cut in the middle of the latest Silero non-speech
-    stretch (>= min_gap) within max_chunk; none -> lowest speech probability in
-    the second half of the window. wav: 16 kHz mono float array."""
+    """plan_chunks on the Silero VAD speech segments of wav (16 kHz mono float
+    array); a cut with no pause goes to the lowest Silero speech probability."""
     from silero_vad import get_speech_timestamps
     assert sr == VAD_SR, "chunk_bounds expects 16 kHz audio"
     dur = len(wav) / sr
@@ -71,32 +101,18 @@ def chunk_bounds(wav, sr, max_chunk=10.0, min_gap=0.1):
     model = _silero()
     x = torch.from_numpy(np.ascontiguousarray(wav, dtype=np.float32))
     speech = [(t["start"] / sr, t["end"] / sr) for t in get_speech_timestamps(x, model, sampling_rate=sr)]
-    gaps, prev = [], 0.0
-    for s, e in speech:
-        if s - prev >= min_gap:
-            gaps.append((prev, s))
-        prev = max(prev, e)
-    if dur - prev >= min_gap:
-        gaps.append((prev, dur))
-    probs = None
-    out, pos = [], 0.0
-    while dur - pos > max_chunk:
-        hi = pos + max_chunk
-        cand = [min(max((gs + ge) / 2, gs, pos + 1e-3), ge, hi) for gs, ge in gaps if ge > pos + 1e-3 and gs < hi]
-        cand = [c for c in cand if pos + 1e-3 < c <= hi]
-        if cand:
-            cut = max(cand)
-        else:                                   # no pause within max_chunk: least speech-like window
-            if probs is None:
-                with torch.no_grad():
-                    probs = model.audio_forward(x, sr)[0].numpy()
-                starts = np.arange(len(probs)) * VAD_WIN / sr
-            idx = np.where((starts >= pos + max_chunk / 2) & (starts <= hi))[0]
-            cut = float(starts[idx[np.argmin(probs[idx])]]) if len(idx) else hi
-        out.append((pos, cut))
-        pos = cut
-    out.append((pos, dur))
-    return out
+    probs = []
+
+    def quietest(lo, hi):
+        if not probs:                           # one extra Silero pass, only when needed
+            with torch.no_grad():
+                probs.append(model.audio_forward(x, sr)[0].numpy())
+        p = probs[0]
+        starts = np.arange(len(p)) * VAD_WIN / sr
+        idx = np.where((starts >= lo) & (starts <= hi))[0]
+        return float(starts[idx[np.argmin(p[idx])]]) if len(idx) else hi
+
+    return plan_chunks(speech, dur, max_chunk, min_gap, quietest)
 
 
 def join_pauses(pauses, phones, tol):
@@ -213,7 +229,7 @@ def transcribe(path, model, fe, tok, device, max_chunk=10.0, symbol_map=None):
     m = getattr(model, "module", model)
     positions = getattr(m, "sil_eval_positions", "all")
     k_min = int(getattr(m, "sil_min_frames", 1))
-    sil_logp = float(m.sil_logp)
+    sil_logp = float(torch.as_tensor(m.sil_logp).detach())   # a learned parameter in most checkpoints
     vocab = tok.get_vocab()
     sym = [(i, E.HYP_FIX.get(s, s)) for s, i in vocab.items()
            if s not in E.SKIP_TOK and s not in (tok.pad_token, tok.unk_token, "<s>", "</s>")]

@@ -134,7 +134,7 @@ def run_manifest_sil(model, feature_extractor, tokenizer, manifest, device="cuda
     m = getattr(model, "module", model)
     positions = positions or getattr(m, "sil_eval_positions", "all")
     k = int(getattr(m, "sil_min_frames", 1))
-    sil_logp = float(m.sil_logp)
+    sil_logp = float(torch.as_tensor(m.sil_logp).detach())   # a learned parameter in most checkpoints
     was_training = model.training
     model.eval()
     store, store_dtw, sil_runs, chunks = {}, {}, {}, {}
