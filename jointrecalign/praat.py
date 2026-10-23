@@ -37,5 +37,7 @@ def install_plugin():
     with open(os.path.join(dest, "transcribe.praat"), "w", encoding="utf-8") as f:
         f.write(script.replace("@COMMAND@", command))
     print(f"Praat plugin installed in {dest}\n"
-          "Restart Praat, select one or more Sounds, and click \"JointRecAlign: transcribe...\".\n"
-          "The first time, the model is downloaded (1.2 GB); to do that now: JointRecAlign download")
+          "Restart Praat, select one or more Sounds, and click \"JointRecAlign: transcribe...\".")
+    from .download import cache_dir, MODEL_NAME
+    if not os.path.exists(os.path.join(cache_dir(), MODEL_NAME, "model.safetensors")):
+        print("The first time, the model is downloaded (1.2 GB); to do that now: JointRecAlign download")

@@ -79,5 +79,4 @@ def default_model(log=print):
     os.replace(os.path.join(tmp, MODEL_NAME), folder)
     shutil.rmtree(tmp, ignore_errors=True)
     os.remove(part)
-    log(f"Model ready: {folder}")
     return folder
