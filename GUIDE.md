@@ -29,8 +29,19 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 **On Linux.** Open a terminal and use the Mac line.
 
-This installs `uv`, a small tool that installs JointRecAlign and the Python it needs, without
-changing anything else on your computer.
+This installs [uv](https://docs.astral.sh/uv/) (free, open source, made by Astral, whose site is
+astral.sh), a small tool that installs JointRecAlign and the Python it needs, without changing
+anything else on your computer: it brings its own Python 3.12, keeps JointRecAlign and its packages
+in a separate folder, and does not need git.
+
+If you would rather not run a script from the internet (or your IT department does not allow
+it), install uv in one of these ways instead:
+
+| | |
+|---|---|
+| Mac with [Homebrew](https://brew.sh) | `brew install uv` |
+| Windows | `winget install --id=astral-sh.uv -e` |
+| any computer that already has Python | `pip install uv` (or `pipx install uv`) |
 
 Then **close the Terminal / PowerShell window, open a new one**, and paste:
 
