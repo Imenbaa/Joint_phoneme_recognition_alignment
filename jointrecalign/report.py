@@ -7,7 +7,7 @@ A recording's page shows, on one time axis that scrolls and zooms:
   attention   the aligner's log attention over the recognised phones and SIL,
               with the SIL-Viterbi path (where the boundaries come from),
   posteriors  the CTC log posterior of every vocabulary symbol per frame, and P(blank),
-  top 5       the five most probable symbols of each frame, by rank.
+  top 5       the five most probable symbols of each frame, by rank (from the unclipped posteriors).
 
 The arrays are stored as 8-bit values (log probabilities clipped at -10); the
 attention is kept in a band of +-BAND phones around the path, so a page stays
@@ -76,7 +76,11 @@ def page_data(name, audio_rel, wav, phones, pauses, dur, trace, tok, symbol_map)
     hop = trace[0]["hop"] if trace else 0.01
     chunks, tokens = [], []
     for t in trace:
-        c = {"t0": t["start"] + t["offset"], "T": t["frames"], "post": _b64(_q(t["ctc_logp"][:, ids].T))}
+        lp_rows = t["ctc_logp"][:, ids]                  # (T, rows)
+        # the top 5 of each frame from the unclipped posteriors: the 8-bit copy ties every symbol
+        # under exp(FLOOR), which is all of them but blank in most frames
+        top5 = np.argsort(-lp_rows, axis=1, kind="stable")[:, :5].astype(np.uint8)
+        c = {"t0": t["start"] + t["offset"], "T": t["frames"], "post": _b64(_q(lp_rows.T)), "top5": _b64(top5)}
         if t["path"] is not None:
             toks = [symbol_map.get(E.HYP_FIX.get(s, s), E.HYP_FIX.get(s, s)) for s in t["tokens"]]
             P, T = len(toks), t["frames"]

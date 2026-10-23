@@ -140,7 +140,7 @@ function int16(b64) { const u = bytes(b64); return new Int16Array(u.buffer, 0, u
 const HOP = D.hop, FLOOR = D.floor, BAND = D.band, NR = D.rows.length, DUR = D.duration;
 const wave = new Int8Array(bytes(D.wave).buffer);
 const chunks = D.chunks.map(c => {
-  const o = { t0: c.t0, T: c.T, post: bytes(c.post) };
+  const o = { t0: c.t0, T: c.T, post: bytes(c.post), top5: bytes(c.top5) };
   if (c.band) Object.assign(o, { tok0: c.tok0, P: c.P, center: int16(c.center), path: int16(c.path),
     band: bytes(c.band), sil: bytes(c.sil) });
   return o;
@@ -170,10 +170,9 @@ for (const c of chunks) {
   c.postImg = img(c.T, NR, px => { for (let r = 0; r < NR; r++) { const y = NR - 1 - r;
     for (let f = 0; f < c.T; f++) { const v = c.post[r * c.T + f], o = (y * c.T + f) * 4;
       px[o] = LUT[v*3]; px[o+1] = LUT[v*3+1]; px[o+2] = LUT[v*3+2]; px[o+3] = 255; } } });
-  c.rankImg = img(c.T, NR, px => { const col = new Array(NR);
-    for (let f = 0; f < c.T; f++) { for (let r = 0; r < NR; r++) col[r] = [c.post[r * c.T + f], r];
-      col.sort((a, b) => b[0] - a[0]);
-      for (let k = 0; k < 5 && k < NR; k++) { const y = NR - 1 - col[k][1], o = (y * c.T + f) * 4;
+  c.rankImg = img(c.T, NR, px => {
+    for (let f = 0; f < c.T; f++) {
+      for (let k = 0; k < 5 && k < NR; k++) { const y = NR - 1 - c.top5[f * 5 + k], o = (y * c.T + f) * 4;
         px[o] = RANK[k][0]; px[o+1] = RANK[k][1]; px[o+2] = RANK[k][2]; px[o+3] = 255; } } });
 }
 
