@@ -9,6 +9,9 @@ This repository has the code to train the models from scratch, to evaluate them 
 to transcribe recordings into Praat TextGrids (phones, boundaries, pauses and the model's top-5
 candidates for each phone), with no transcript needed.
 
+**Phoneticians: start with the [step-by-step guide](GUIDE.md)**: install with two commands, then
+transcribe from a window, from Praat, or with one command.
+
 ## Contents
 
 - [Models](#models)
@@ -92,12 +95,14 @@ At inference the model aligns its own CTC decode, so it needs no transcription.
 
 Python ≥ 3.10. A CUDA GPU for training; transcription also runs on CPU.
 
-**To transcribe recordings only**, one command installs the package, its dependencies and the
-`JointRecAlign-transcribe` command:
+**To transcribe recordings only**, see the [step-by-step guide](GUIDE.md) (no Python
+knowledge needed), or, in an existing Python environment:
 
 ```bash
 pip install git+https://github.com/Imenbaa/Joint_phoneme_recognition_alignment.git
 ```
+
+Both install the `JointRecAlign` command.
 
 **To train or evaluate**, clone the repository:
 
@@ -111,33 +116,33 @@ pip install -e .                    # the jointrecalign package
 
 The scripts at the repository root (`train_ctc.py`, `train_aligner.py`, `evaluate.py`,
 `transcribe.py`) also run from the repository root without `pip install -e .`.
-`pip install -e .` also installs the `JointRecAlign-transcribe` command.
+`pip install -e .` also installs the `JointRecAlign` command.
 
 ## Transcribing recordings
 
-`JointRecAlign-transcribe` (or `python transcribe.py` from the repository root) gives, for each
+`JointRecAlign` (or `python transcribe.py` from the repository root) gives, for each
 recording, the phones the model hears, their boundaries, the pauses, and the model's five best
 candidates for each phone. It runs on GPU or CPU.
 
-**Download the model**: [`aligner_10ms_sil_alpha0.1.zip`](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip)
-(1.2 GB, [release v0.1.0](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/tag/v0.1.0),
-licence CC BY-NC 4.0), then unzip it:
-
 ```bash
-curl -LO https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip
-unzip aligner_10ms_sil_alpha0.1.zip
-JointRecAlign-transcribe --model aligner_10ms_sil_alpha0.1 \
-    -o results/ recording1.wav recording2.wav recordings_folder/
+JointRecAlign recording1.wav recording2.wav recordings_folder/
+JointRecAlign                               # no argument: a window to choose the recordings
+JointRecAlign --install-praat-plugin        # a "JointRecAlign: transcribe..." button for Sounds in Praat
 ```
 
-Any stage-3 checkpoint you train yourself (joint aligner with latent silence, see
-[Training](#training)) works the same way, e.g.
-`--model $WORK_DIR/aligner_10ms_sil_alpha0.1/checkpoint-43000`.
+**The model** ([`aligner_10ms_sil_alpha0.1.zip`](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip),
+1.2 GB, [release v0.1.0](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/tag/v0.1.0),
+licence CC BY-NC 4.0) is downloaded and checked the first time (or with `JointRecAlign --download`)
+into a cache folder: `~/.cache/JointRecAlign` (Linux), `~/Library/Caches/JointRecAlign` (macOS),
+`%LOCALAPPDATA%\JointRecAlign` (Windows); `JOINTRECALIGN_HOME` changes it. Any stage-3 checkpoint
+you train yourself (joint aligner with latent silence, see [Training](#training)) works with
+`--model`, e.g. `--model $WORK_DIR/aligner_10ms_sil_alpha0.1/checkpoint-43000`.
 
 Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo (resampled to 16 kHz and
-downmixed). A folder means every audio file in it.
+downmixed). A folder means every audio file in it. A recording that cannot be read is reported
+and the others are still transcribed.
 
-For each recording, in `-o`:
+For each recording, in a folder `JointRecAlign/` next to the recording (or in `-o`):
 
 | file | content |
 |---|---|
@@ -153,6 +158,8 @@ For each recording, in `-o`:
 
 | option | meaning |
 |---|---|
+| `-o folder` | where the results go (default: `JointRecAlign/` next to each recording) |
+| `--model folder` | another model (default: the released one, downloaded the first time) |
 | `--symbols ipa` (default) / `model` | `ipa` writes the nasal vowels and œ in IPA (`ɑ̃ ɛ̃ ɔ̃ œ`); `model` keeps the model's one-character codes (`@ 1 § 9`) |
 | `--phone_map map.json` | your own labels, applied last, e.g. `{"ə": "ø"}` for a corpus that writes the schwa `ø` |
 | `--max_chunk 10` | longest piece of audio the model sees at once, in seconds |
@@ -396,11 +403,15 @@ train_ctc.py              stages 0-2: data preparation, CTC fine-tuning (20 or 1
 train_aligner.py          stage 3: joint recognition + alignment model
 evaluate.py               alignment evaluation on a manifest
 make_manifest.py          evaluation manifest from audio + TextGrids (WhisperX VAD chunks)
-transcribe.py             recordings -> TextGrids (= JointRecAlign-transcribe)
+transcribe.py             recordings -> TextGrids (= JointRecAlign)
+GUIDE.md                  step-by-step guide for phoneticians
 recipes/                  one script per stage, with the settings of the trained models
 jointrecalign/
   transcribe.py           Silero chunking, decoding, top-5 candidates, TextGrid / CSV writers
-  transcribe_cli.py       command line of transcribe.py
+  transcribe_cli.py       the JointRecAlign command
+  gui.py                  its window
+  download.py             download of the released model into a cache folder
+  praat.py, praat_plugin/ the Praat plugin
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers
   pool_alignment.py       CTC + aligner with pooled phone keys, latent SIL, gradient routing
   model.py                + masked reconstruction (L_m), EMA quantizer, L_energy

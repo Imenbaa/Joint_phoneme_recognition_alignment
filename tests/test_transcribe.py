@@ -12,8 +12,11 @@
 4. TextGrid / CSV writers: every tier covers [0, duration] without gaps or
    overlaps, labels and tier names as documented.
 5. End to end on a tiny random latent-SIL model and 25 s of synthetic audio:
-   load_model, transcribe (several chunks), writers, and the command line.
+   load_model, transcribe (several chunks), writers, and the command line
+   (default results folder, a damaged file among good ones).
    Needs silero-vad (skipped without it).
+6. Model download on first use (from a local zip), then reuse of the cache.
+7. Praat plugin installation.
 """
 import csv
 import json
@@ -205,7 +208,7 @@ def test_end_to_end():
         TR.write_textgrid(f"{d}/rec.TextGrid", phones, pauses, dur)
         TR.write_csv(f"{d}/rec.csv", phones)
         check_outputs(f"{d}/rec.TextGrid", f"{d}/rec.csv", phones, pauses, dur)
-        # command line, as installed (`JointRecAlign-transcribe`) and from the repository root
+        # command line, as installed (`JointRecAlign`) and from the repository root
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         r = subprocess.run([sys.executable, os.path.join(root, "transcribe.py"), "--model", f"{d}/model",
                             "--device", "cpu", "--symbols", "model", "-o", f"{d}/out", d],
@@ -214,8 +217,68 @@ def test_end_to_end():
         assert os.path.exists(f"{d}/out/rec.TextGrid") and os.path.exists(f"{d}/out/rec.csv")
         r = subprocess.run([sys.executable, os.path.join(root, "transcribe.py"), "--model", f"{d}/model",
                             "-o", f"{d}/out", f"{d}/model/vocab.json"], capture_output=True, text=True, cwd=root)
-        assert r.returncode != 0 and "unsupported audio format" in r.stderr, r.stderr[-500:]
+        assert r.returncode != 0 and "not a supported audio file" in r.stderr, r.stderr[-500:]
+        # `JointRecAlign` (python -m jointrecalign) without -o: results in JointRecAlign/ next to the
+        # recordings; a damaged file is reported and the others are still transcribed
+        open(f"{d}/damaged.wav", "wb").write(b"not audio")
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "--model", f"{d}/model", "--device", "cpu",
+                            d], capture_output=True, text=True, cwd=root)
+        assert r.returncode == 1 and "damaged: FAILED" in r.stdout and "1 failed" in r.stdout, r.stdout + r.stderr
+        assert os.path.exists(f"{d}/JointRecAlign/rec.TextGrid") and os.path.exists(f"{d}/JointRecAlign/rec.csv")
+        assert not os.path.exists(f"{d}/JointRecAlign/damaged.TextGrid")
     print(f"end to end ok ({len(phones)} phones, {len(pauses)} pauses)")
+
+
+def test_download():
+    """First use: the model zip is fetched, unzipped into the cache, then reused."""
+    import zipfile
+    from jointrecalign import download as DL
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(f"{d}/src/{DL.MODEL_NAME}")
+        open(f"{d}/src/{DL.MODEL_NAME}/model.safetensors", "wb").write(os.urandom(3_000_000))
+        with zipfile.ZipFile(f"{d}/m.zip", "w") as z:
+            z.write(f"{d}/src/{DL.MODEL_NAME}/model.safetensors", f"{DL.MODEL_NAME}/model.safetensors")
+        env = dict(os.environ)
+        os.environ.update(JOINTRECALIGN_HOME=f"{d}/cache", JOINTRECALIGN_MODEL_URL=f"file://{d}/m.zip")
+        try:
+            lines = []
+            folder = DL.default_model(lines.append)
+            assert folder == f"{d}/cache/{DL.MODEL_NAME}", folder
+            assert open(f"{folder}/model.safetensors", "rb").read() == \
+                open(f"{d}/src/{DL.MODEL_NAME}/model.safetensors", "rb").read()
+            assert sorted(os.listdir(f"{d}/cache")) == [DL.MODEL_NAME], os.listdir(f"{d}/cache")
+            assert any("100 %" in x for x in lines), lines
+            lines = []
+            assert DL.default_model(lines.append) == folder and not lines    # second use: no download
+            os.environ.update(JOINTRECALIGN_HOME=f"{d}/cache2", JOINTRECALIGN_MODEL_URL=f"file://{d}/none.zip")
+            try:
+                DL.default_model(lines.append)
+                raise AssertionError("no error on a failed download")
+            except RuntimeError as e:
+                assert "could not download" in str(e), e
+        finally:
+            os.environ.clear()
+            os.environ.update(env)
+    print("download ok")
+
+
+def test_praat_plugin():
+    """The plugin folder gets setup.praat and transcribe.praat calling this Python."""
+    from jointrecalign import praat
+    with tempfile.TemporaryDirectory() as d:
+        env = dict(os.environ)
+        os.environ["PRAAT_PREFS_DIR"] = d
+        try:
+            praat.install_plugin()
+        finally:
+            os.environ.clear()
+            os.environ.update(env)
+        dest = f"{d}/{praat.PLUGIN}"
+        assert sorted(os.listdir(dest)) == ["setup.praat", "transcribe.praat"], os.listdir(dest)
+        script = open(f"{dest}/transcribe.praat", encoding="utf-8").read()
+        assert "@COMMAND@" not in script and f"{sys.executable} -m jointrecalign" in script.replace('""', "")
+        assert '"transcribe.praat"' in open(f"{dest}/setup.praat").read()
+    print("praat plugin ok")
 
 
 if __name__ == "__main__":
@@ -224,4 +287,6 @@ if __name__ == "__main__":
     test_candidates()
     test_writers()
     test_end_to_end()
+    test_download()
+    test_praat_plugin()
     print("ALL OK")
