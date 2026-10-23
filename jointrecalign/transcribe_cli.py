@@ -18,6 +18,7 @@ See jointrecalign/transcribe.py for the method.
 """
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -66,6 +67,8 @@ def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chun
         log=print, vocab_path=None):
     """Transcribe the files; one failing file does not stop the others. -> (written TextGrids, failures)."""
     warnings.filterwarnings("ignore")
+    # a harmless torch notice on macOS ("Redirects are currently not supported")
+    logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     from transformers.utils import logging as hf_logging
     from . import transcribe as TR
