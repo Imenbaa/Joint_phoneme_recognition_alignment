@@ -8,6 +8,8 @@ A recording's page shows, on one time axis that scrolls and zooms:
               with the SIL-Viterbi path (where the boundaries come from),
   posteriors  the CTC log posterior of every vocabulary symbol per frame, and P(blank),
   top 5       the five most probable symbols of each frame, by rank (from the unclipped posteriors).
+With a reference (reference.py), the reference phones and pauses are drawn on every
+panel and each recognised phone is marked as matching, substituted or inserted.
 
 The arrays are stored as 8-bit values (log probabilities clipped at -10); the
 attention is kept in a band of +-BAND phones around the path, so a page stays
@@ -70,7 +72,7 @@ def _waveform(wav, dur, hop):
     return np.round(mm * 127).astype(np.int8)
 
 
-def page_data(name, audio_rel, wav, phones, pauses, dur, trace, tok, symbol_map):
+def page_data(name, audio_rel, wav, phones, pauses, dur, trace, tok, symbol_map, comparison=None):
     rows, breaks = vocab_rows(tok, symbol_map)
     ids = [i for i, _ in rows]
     hop = trace[0]["hop"] if trace else 0.01
@@ -109,7 +111,24 @@ def page_data(name, audio_rel, wav, phones, pauses, dur, trace, tok, symbol_map)
         "phones": [[round(p["start"], 4), round(p["end"], 4), p["phone"],
                     [[s, round(v, 4)] for s, v in p["cands"]]] for p in phones],
         "pauses": [[round(s, 4), round(e, 4)] for s, e in pauses],
+        "ref": _ref_data(comparison),
     }
+
+
+def _ref_data(comparison):
+    """comparison = (reference, match, scores) from reference.py, or None."""
+    if not comparison:
+        return None
+    r, match, sc = comparison
+    hyp_ref = [None] * len(match["hyp_status"])
+    for i, j in match["pairs"]:
+        hyp_ref[j] = i
+    return {"tier": r["tier"],
+            "phones": [[round(p["start"], 4), round(p["end"], 4), p["phone"], st]
+                       for p, st in zip(r["phones"], match["ref_status"])],
+            "pauses": [[round(s, 4), round(e, 4)] for s, e in r["pauses"]],
+            "hyp_status": match["hyp_status"], "hyp_ref": hyp_ref,
+            "scores": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in sc.items()}}
 
 
 def _template(name):
@@ -125,11 +144,11 @@ def _audio_ref(audio_path, out_dir):
         return "file:///" + os.path.abspath(audio_path).replace(os.sep, "/").lstrip("/")
 
 
-def write_page(path, audio_path, phones, pauses, dur, trace, tok, symbol_map):
+def write_page(path, audio_path, phones, pauses, dur, trace, tok, symbol_map, comparison=None):
     name = os.path.splitext(os.path.basename(path))[0]
     wav = E.load_audio(audio_path)
     data = page_data(name, _audio_ref(audio_path, os.path.dirname(path)), wav, phones, pauses, dur,
-                     trace, tok, symbol_map)
+                     trace, tok, symbol_map, comparison)
     js = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     page = (_template("page.html").replace("__TITLE__", html.escape(name))
             .replace("/*__DATA__*/null", js))
@@ -137,12 +156,16 @@ def write_page(path, audio_path, phones, pauses, dur, trace, tok, symbol_map):
         f.write(page)
 
 
-def summary(name, phones, pauses, dur, low=0.5):
+def summary(name, phones, pauses, dur, scores=None, low=0.5):
     conf = [p["cands"][0][1] for p in phones if p["cands"]]
-    return {"name": name, "duration": round(dur, 2), "phones": len(phones), "pauses": len(pauses),
-            "pause_time": round(sum(e - s for s, e in pauses), 2),
-            "mean_conf": round(float(np.mean(conf)), 3) if conf else None,
-            "low_conf": int(sum(c < low for c in conf))}
+    out = {"name": name, "duration": round(dur, 2), "phones": len(phones), "pauses": len(pauses),
+           "pause_time": round(sum(e - s for s, e in pauses), 2),
+           "mean_conf": round(float(np.mean(conf)), 3) if conf else None,
+           "low_conf": int(sum(c < low for c in conf))}
+    if scores:
+        out.update({k: (None if scores[k] is None else round(scores[k], 4))
+                    for k in ("PER", "F1@20", "MedianBE", "pause_F1")})
+    return out
 
 
 def _previous_rows(path):
@@ -156,13 +179,15 @@ def _previous_rows(path):
     return [r for r in rows if os.path.exists(os.path.join(d, r["name"] + ".html"))]
 
 
-def write_index(path, rows, failed=()):
+def write_index(path, rows, failed=(), total=None):
     """rows: summary() dicts of the recordings with a page; failed: [(file, reason)]. Recordings
     of earlier runs into the same folder stay listed while their page exists."""
     names = {r["name"] for r in rows}
     rows = [r for r in _previous_rows(path) if r["name"] not in names] + list(rows)
     data = {"rows": sorted(rows, key=lambda r: r["name"]),
-            "failed": [[os.path.basename(f), why] for f, why in failed]}
+            "failed": [[os.path.basename(f), why] for f, why in failed],
+            "total": None if not total else {k: (None if total[k] is None else round(total[k], 4))
+                                             for k in ("PER", "F1@20", "MedianBE", "pause_F1")}}
     js = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     with open(path, "w", encoding="utf-8") as f:
         f.write(_template("index.html").replace("/*__DATA__*/null", js))

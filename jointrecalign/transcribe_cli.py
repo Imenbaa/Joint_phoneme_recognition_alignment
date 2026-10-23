@@ -4,6 +4,8 @@ of French recordings, as Praat TextGrids. No transcript is needed.
     JointRecAlign validate recordings/              check the audio files, without the model
     JointRecAlign transcribe recordings/ [-o out/]  check, then transcribe
     JointRecAlign transcribe recordings/ --report   also an HTML page per recording (plots)
+    JointRecAlign transcribe recordings/ --reference textgrids/
+                                                    compare with reference phone TextGrids
     JointRecAlign download                          download the model now (else: on first use)
     JointRecAlign install-praat-plugin              a "JointRecAlign: transcribe..." button in Praat
 
@@ -12,8 +14,10 @@ another folder. For each recording:
     <name>.TextGrid   tiers: phones, confidence, top2, top3, top4, top5, pauses
     <name>.csv        one row per phone: start, end, phone, top1..top5 and their probabilities
     <name>.html       with --report: waveform, phones, attention, posteriors, top 5 (index.html lists them)
-and JointRecAlign.log, the summary of the run. The exit code is 1 when a
-recording could not be transcribed.
+and JointRecAlign.log, the summary of the run; with --reference, comparison.csv
+(PER, boundary F1, boundary errors, pause scores per recording and for the corpus;
+see jointrecalign/reference.py). The exit code is 1 when a recording could not be
+transcribed.
 
 Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo.
 
@@ -84,11 +88,41 @@ def check_file(path):
     return out
 
 
-def validate(files, out_dir=None, log=print):
-    """Check every file; -> {path: [(level, message)]} for the files with a problem."""
+def check_reference(path, out_dir, ref):
+    """-> [(level, message)] about the reference TextGrid of a recording (ref: the --reference options)."""
+    import soundfile as sf
+    from . import reference as RF
+    name = os.path.splitext(os.path.basename(path))[0]
+    rp = RF.find_reference(path, ref["folder"])
+    if rp is None:
+        return [("warning", f"no reference {name}.TextGrid in {ref['folder']}: not compared")]
+    if os.path.abspath(rp) == os.path.abspath(os.path.join(out_dir_for(path, out_dir), name + ".TextGrid")):
+        return [("error", f"the results would overwrite the reference {rp}: choose another -o")]
+    try:
+        r = RF.load_reference(rp, ref["tier"], ref["map"], ref["pause_labels"], ref["skip_labels"])
+    except Exception as e:
+        return [("warning", f"reference {rp} not usable ({e}): not compared")]
+    out = []
+    if not r["phones"]:
+        out.append(("warning", f"reference tier {r['tier']!r} of {rp} has no phone"))
+    try:
+        dur = sf.info(path).duration
+        if abs(r["end"] - dur) > 1.0:
+            out.append(("warning", f"reference {rp} ends at {r['end']:.1f} s, the audio at {dur:.1f} s: "
+                                   "is it the right TextGrid?"))
+    except Exception:
+        pass
+    return out
+
+
+def validate(files, out_dir=None, log=print, ref=None):
+    """Check every file (and its reference TextGrid, with ref); -> {path: [(level, message)]}
+    for the files with a problem."""
     issues, seen = {}, {}
     for path in files:
         found = check_file(path)
+        if ref and not any(lv == "error" for lv, _ in found):
+            found += check_reference(path, out_dir, ref)
         key = (out_dir_for(path, out_dir), os.path.splitext(os.path.basename(path))[0].lower())
         if key in seen:
             found.append(("error", f"same name as {seen[key]}: its results would be overwritten "
@@ -128,9 +162,11 @@ class Log:
 
 
 def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chunk=10.0, device=None,
-        log=print, vocab_path=None, report=False, rejected=()):
+        log=print, vocab_path=None, report=False, rejected=(), ref=None):
     """Transcribe the files; one failing file does not stop the others. rejected: [(file, reason)]
-    refused before (listed in the report index). -> (written TextGrids, failures [(file, reason)])."""
+    refused before (listed in the report index); ref: the --reference options.
+    -> (written TextGrids, failures [(file, reason)], comparison counts [(file, counts)],
+        reference labels outside the model's phones {label: count})."""
     warnings.filterwarnings("ignore")
     # a harmless torch notice on macOS ("Redirects are currently not supported")
     logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
@@ -144,7 +180,11 @@ def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chun
     log("Loading the model")
     m, fe, tok, dev = TR.load_model(model, vocab_path, device)
     log(f"Running on {'the GPU' if dev == 'cuda' else 'the CPU'}")
-    done, failed, pages = [], [], {}
+    done, failed, pages, compared, unknown = [], [], {}, [], {}
+    if ref:
+        from . import reference as RF
+        from .report import vocab_rows
+        known = {l for _, l in vocab_rows(tok, symbol_map)[0][1:]} | {symbol_map.get(v, v) for v in TR.E.HYP_FIX.values()}
     for i, path in enumerate(files, 1):
         name = os.path.splitext(os.path.basename(path))[0]
         t = time.time()
@@ -156,25 +196,55 @@ def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chun
             tg = os.path.join(d, name + ".TextGrid")
             TR.write_textgrid(tg, phones, pauses, dur)
             TR.write_csv(os.path.join(d, name + ".csv"), phones)
+            cmp_ = None
+            rp = RF.find_reference(path, ref["folder"]) if ref else None
+            if rp:
+                try:
+                    r = RF.load_reference(rp, ref["tier"], ref["map"], ref["pause_labels"], ref["skip_labels"])
+                    counts, match = RF.compare(r, phones, dur)
+                    compared.append((path, counts))
+                    for p in r["phones"]:
+                        if p["phone"] not in known:
+                            unknown[p["phone"]] = unknown.get(p["phone"], 0) + 1
+                    cmp_ = (r, match, RF.scores(counts))
+                except Exception:
+                    cmp_ = None                       # reported by the check
             if report:
                 from . import report as R
-                R.write_page(os.path.join(d, name + ".html"), path, phones, pauses, dur, trace, tok, symbol_map)
-                pages.setdefault(d, []).append(R.summary(name, phones, pauses, dur))
+                R.write_page(os.path.join(d, name + ".html"), path, phones, pauses, dur, trace, tok, symbol_map,
+                             cmp_)
+                pages.setdefault(d, []).append(R.summary(name, phones, pauses, dur, cmp_ and cmp_[2]))
         except Exception as e:
             failed.append((path, str(e).splitlines()[0] if str(e) else type(e).__name__))
             log(f"[{i}/{len(files)}] {name}: FAILED ({failed[-1][1]})")
             continue
         done.append(tg)
-        log(f"[{i}/{len(files)}] {name}: {dur:.1f} s of audio, {len(phones)} phones, {len(pauses)} pauses "
-            f"({time.time() - t:.1f} s)")
+        msg = (f"[{i}/{len(files)}] {name}: {dur:.1f} s of audio, {len(phones)} phones, {len(pauses)} pauses "
+               f"({time.time() - t:.1f} s)")
+        if cmp_:
+            s = cmp_[2]
+            msg += f"; vs reference: PER {_pc(s['PER'])}, F1@20ms {_pc(s['F1@20'])}, pause F1 {_pc(s['pause_F1'])}"
+        log(msg)
     if report:
         from . import report as R
         for d in sorted({out_dir_for(p, out_dir) for p in files} | {out_dir_for(p, out_dir) for p, _ in rejected}):
             fails = [(p, w) for p, w in list(rejected) + failed if out_dir_for(p, out_dir) == d]
+            mine = [c for p, c in compared if out_dir_for(p, out_dir) == d]
             if d in pages or fails:
                 os.makedirs(d, exist_ok=True)
-                R.write_index(os.path.join(d, "index.html"), pages.get(d, []), fails)
-    return done, failed
+                R.write_index(os.path.join(d, "index.html"), pages.get(d, []), fails,
+                              RF.scores(mine) if mine else None)
+    if compared:
+        from . import reference as RF
+        for d in sorted({out_dir_for(p, out_dir) for p, _ in compared}):
+            mine = [(p, c) for p, c in compared if out_dir_for(p, out_dir) == d]
+            rows = [(os.path.splitext(os.path.basename(p))[0], RF.scores(c)) for p, c in mine]
+            RF.write_csv(os.path.join(d, "comparison.csv"), rows + [("TOTAL", RF.scores([c for _, c in mine]))])
+    return done, failed, compared, unknown
+
+
+def _pc(v, unit="%"):
+    return "-" if v is None else (f"{v:.1f} {unit}" if unit else f"{v:.1f}")
 
 
 def transcribe_command(a, log):
@@ -184,16 +254,17 @@ def transcribe_command(a, log):
     if not files:
         log("No audio file to transcribe.")
         return 1
-    log(f"Checking {len(files)} recordings")
-    issues = validate(files, a.out_dir, log)
+    ref = ref_options(a)
+    log(f"Checking {len(files)} recordings" + (f" and their reference TextGrids in {a.reference}" if ref else ""))
+    issues = validate(files, a.out_dir, log, ref)
     bad = {p for p, v in issues.items() if any(lv == "error" for lv, _ in v)}
     todo = [p for p in files if p not in bad]
     rejected = [(p, "; ".join(m for lv, m in issues[p] if lv == "error")) for p in files if p in bad]
-    done, failed = [], []
+    done, failed, compared, unknown = [], [], [], {}
     if todo:
         t = time.time()
-        done, failed = run(todo, a.out_dir, a.model, a.symbols, a.phone_map, a.max_chunk, a.device,
-                           log, a.vocab_path, a.report, rejected)
+        done, failed, compared, unknown = run(todo, a.out_dir, a.model, a.symbols, a.phone_map, a.max_chunk,
+                                              a.device, log, a.vocab_path, a.report, rejected, ref)
         log(f"Time: {time.time() - t:.0f} s")
     failed = rejected + failed
     log("")
@@ -205,13 +276,42 @@ def transcribe_command(a, log):
         for lv, msg in v:
             if lv == "warning":
                 log(f"  warning: {p}: {msg}")
+    if ref:
+        from . import reference as RF
+        s = RF.scores([c for _, c in compared]) if compared else None
+        log(f"  compared with the reference: {len(compared)} of {len(done)} transcribed recordings")
+        if s:
+            log(f"    PER {_pc(s['PER'])} ({s['S']} substitutions, {s['D']} deletions, {s['I']} insertions, "
+                f"{s['n_ref']} reference phones)")
+            log(f"    boundaries: F1 {_pc(s['F1@20'])} within 20 ms, {_pc(s['F1@50'])} within 50 ms; "
+                f"median error {_pc(s['MedianBE'], 'ms')}")
+            log(f"    pauses: P {_pc(s['pause_P'])}, R {_pc(s['pause_R'])}, F1 {_pc(s['pause_F1'])} "
+                f"({s['pause_ref']} reference pauses)")
+        if unknown:
+            top = ", ".join(f"{k!r} ({n})" for k, n in sorted(unknown.items(), key=lambda x: -x[1])[:12])
+            log(f"  warning: reference labels that are not phones of the model: {top}. They count as errors; "
+                "map them with --ref_map, or list non-phone labels in --pause_labels / --skip_labels")
     made = [d for d in sorted({out_dir_for(p, a.out_dir) for p in files}) if os.path.isdir(d)]
     for d in made:
-        log(f"  results: {d}" + (f"  (report: {os.path.join(d, 'index.html')})" if a.report else ""))
+        log(f"  results: {d}" + (f"  (report: {os.path.join(d, 'index.html')})" if a.report else "")
+            + ("  (comparison.csv)" if os.path.exists(os.path.join(d, "comparison.csv")) and compared else ""))
     for d in made:
         with open(os.path.join(d, "JointRecAlign.log"), "w", encoding="utf-8") as f:
             f.write("\n".join(log.lines) + "\n")
     return 1 if failed or problems else 0
+
+
+def ref_options(a):
+    """The --reference options as a dict, or None."""
+    if not getattr(a, "reference", None):
+        return None
+    from . import reference as RF
+    if not os.path.isdir(a.reference):
+        raise ValueError(f"reference folder not found: {a.reference}")
+    split = lambda s: [x.strip() for x in s.split(",") if x.strip()]
+    return {"folder": a.reference, "tier": a.ref_tier, "map": RF.load_map(a.ref_map),
+            "pause_labels": split(a.pause_labels) if a.pause_labels is not None else RF.PAUSE_LABELS,
+            "skip_labels": split(a.skip_labels) if a.skip_labels else ()}
 
 
 def parser():
@@ -224,6 +324,18 @@ def parser():
         p.add_argument("inputs", nargs="+", help="audio files or folders of audio files")
         p.add_argument("-o", "--out_dir", default=None,
                        help=f"folder for the results (default: a folder {OUT_NAME}/ next to each recording)")
+        g = p.add_argument_group("comparison with a reference (see jointrecalign/reference.py)")
+        g.add_argument("--reference", default=None, metavar="FOLDER",
+                       help="folder of the reference phone TextGrids, <name>.TextGrid for <name>.wav")
+        g.add_argument("--ref_tier", default=None,
+                       help="tier of the reference phones (default: phones / phonemes / ..., else the first)")
+        g.add_argument("--ref_map", default=None, metavar="JSON",
+                       help='JSON {"reference label": "model phone"}, e.g. {"ø": "ə"} or {"a~": "ɑ̃"}')
+        g.add_argument("--pause_labels", default=None,
+                       help="comma-separated labels that mean a pause, besides empty intervals "
+                            "(default: SIL, sil, sp, spn, _, #, <p:>, ...)")
+        g.add_argument("--skip_labels", default=None,
+                       help="comma-separated labels left out of the comparison (noise, overlap...)")
         if name == "validate":
             continue
         p.add_argument("--report", action="store_true",
@@ -269,7 +381,7 @@ def main(argv=None):
             files, problems = find_audio(a.inputs)
             for p in problems:
                 log(f"  ERROR   {p}")
-            issues = validate(files, a.out_dir, log) if files else {}
+            issues = validate(files, a.out_dir, log, ref_options(a)) if files else {}
             code = 1 if problems or not files or any(lv == "error" for v in issues.values() for lv, _ in v) else 0
         else:
             code = transcribe_command(a, log)

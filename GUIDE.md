@@ -117,6 +117,29 @@ Drag to scroll, ⌘/Ctrl + mouse wheel to zoom, space to play. The address of th
 view (e.g. `ABC_01.html#12.5-14.5`): copy it to show someone the same place. The pages play the
 audio from where it was when the report was made: keep the recordings in place.
 
+### Comparing with your own transcription: `--reference`
+
+If you have reference TextGrids (hand-made or from another aligner) with a phone tier, put them in
+a folder with the same names as the recordings (`ABC_01.TextGrid` for `ABC_01.wav`) and add
+`--reference`:
+
+```
+JointRecAlign transcribe my_recordings --report --reference my_textgrids
+```
+
+The summary then gives, for the corpus, the phone error rate (PER), how many boundaries are within
+20 ms and 50 ms of yours, the median boundary error and how well the pauses match; the same figures
+per recording are in `comparison.csv` and in the report, where your phones appear under the
+model's (amber: different phone; red: phone only one of you has) and in red on the plots.
+
+- The tier used is the one named `phones` (or `phonemes`, `phonèmes`...), else the first one; choose
+  it with `--ref_tier my_tier`.
+- Empty intervals and labels such as `SIL`, `sil`, `sp`, `_`, `#` are pauses.
+- If your symbols differ from the model's (the summary lists them), write a small file
+  `map.json`, e.g. `{"ø": "ə", "a~": "ɑ̃"}`, and add `--ref_map map.json`. Labels that are not
+  phones (noise, laughter...) can be left out with `--skip_labels noise,laugh`.
+- Your TextGrids are never modified.
+
 ### From Praat
 
 Install the Praat plugin once (in a Terminal / PowerShell window):

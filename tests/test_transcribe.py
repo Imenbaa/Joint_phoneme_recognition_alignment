@@ -14,7 +14,7 @@
 5. End to end on a tiny random latent-SIL model and 25 s of synthetic audio:
    load_model, transcribe (several chunks), writers, and the command line
    (validate, default results folder, a damaged file among good ones, summary,
-   log, HTML report).
+   log, HTML report, comparison with a reference TextGrid).
    Needs silero-vad (skipped without it).
 6. Model download on first use (from a local zip), then reuse of the cache.
 7. Praat plugin installation.
@@ -241,6 +241,31 @@ def test_end_to_end():
         assert sum(c["T"] for c in data["chunks"]) > 0.9 * dur / data["hop"]
         idx = json.loads(re.search(r"const D = (\{.*?\});\n", open(f"{res}/index.html", encoding="utf-8").read()).group(1))
         assert [x["name"] for x in idx["rows"]] == ["rec"] and idx["failed"][0][0] == "damaged.wav", idx
+        # --reference: a reference TextGrid for rec (the transcription's own phones, the first one
+        # changed), comparison.csv, the reference in the page and the index; a reference that the
+        # results would overwrite is refused
+        os.makedirs(f"{d}/ref")
+        ref_ph = [dict(p) for p in phones]
+        ref_ph[0]["phone"] = "zz"
+        TR.write_textgrid(f"{d}/ref/rec.TextGrid", ref_ph, pauses, dur)
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "transcribe", "--model", f"{d}/model",
+                            "--device", "cpu", "--report", "--reference", f"{d}/ref", "-o", f"{d}/cmp",
+                            f"{d}/rec.wav"], capture_output=True, text=True, cwd=root)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "compared with the reference: 1 of 1" in r.stdout and "'zz' (1)" in r.stdout, r.stdout
+        rows = list(csv.DictReader(open(f"{d}/cmp/comparison.csv", encoding="utf-8")))
+        assert [x["recording"] for x in rows] == ["rec", "TOTAL"] and rows[0]["S"] == "1", rows
+        assert int(rows[0]["n_ref"]) == len(phones) and rows[0]["D"] == "0" and rows[0]["I"] == "0", rows
+        page = json.loads(re.search(r"const D = (\{.*?\});\n", open(f"{d}/cmp/rec.html", encoding="utf-8").read()).group(1))
+        assert page["ref"]["phones"][0][2:] == ["zz", "sub"] and page["ref"]["hyp_status"][0] == "sub", page["ref"]["phones"][:2]
+        assert page["ref"]["scores"]["F1@20"] == 100.0, page["ref"]["scores"]
+        idx = json.loads(re.search(r"const D = (\{.*?\});\n", open(f"{d}/cmp/index.html", encoding="utf-8").read()).group(1))
+        assert idx["total"]["F1@20"] == 100.0 and idx["rows"][0]["PER"] is not None, idx
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "transcribe", "--model", f"{d}/model",
+                            "--device", "cpu", "--reference", f"{d}/ref", "-o", f"{d}/ref", f"{d}/rec.wav"],
+                           capture_output=True, text=True, cwd=root)
+        assert r.returncode == 1 and "would overwrite the reference" in r.stdout, r.stdout + r.stderr
+        assert open(f"{d}/ref/rec.TextGrid", encoding="utf-8").read().count('"zz"') == 1    # left as it was
         # validate alone: no model, same check
         r = subprocess.run([sys.executable, "-m", "jointrecalign", "validate", d], capture_output=True, text=True, cwd=root)
         assert r.returncode == 1 and "1 can be transcribed, 1 cannot" in r.stdout, r.stdout + r.stderr

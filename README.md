@@ -128,6 +128,7 @@ candidates for each phone. It runs on GPU or CPU.
 JointRecAlign validate recordings_folder/                 # check the audio files (no model)
 JointRecAlign transcribe recordings_folder/ [-o out/]     # check, then transcribe
 JointRecAlign transcribe recordings_folder/ --report      # + one HTML page per recording, index.html
+JointRecAlign transcribe recordings_folder/ --reference textgrids/   # + comparison with reference TextGrids
 JointRecAlign install-praat-plugin                        # a "JointRecAlign: transcribe..." button for Sounds in Praat
 ```
 
@@ -175,6 +176,29 @@ For each recording, in a folder `JointRecAlign/` next to the recording (or in `-
 | `--max_chunk 10` | longest piece of audio the model sees at once, in seconds |
 | `--vocab_path` | phone vocabulary (default: `vocab.json` in the checkpoint) |
 | `--device cuda` / `cpu` | default: `cuda` when available |
+
+**Comparison with a reference** (`--reference FOLDER`, `jointrecalign/reference.py`): for
+`<name>.wav`, the phone tier of `FOLDER/<name>.TextGrid` (`--ref_tier`, default the tier named
+`phones`/`phonemes`/..., else the first interval tier) is compared with the transcription with the
+metrics of the evaluation (`evaluate.py`):
+
+| figure | meaning |
+|---|---|
+| PER | substitutions + deletions + insertions over the reference phones |
+| F1 20 ms / 50 ms | boundary detection: every phone onset and offset; each reference boundary is matched one-to-one to the nearest recognised boundary within 20 / 50 ms |
+| median error | median \|error\| of the starts and ends of the phones recognised with the reference label |
+| pause P / R / F1 | reference pauses matched one-to-one by a recognised pause (time not covered by a phone) with intersection over union ≥ 0.5 |
+
+Empty intervals and `--pause_labels` (default `SIL sil sp spn _ # <p:>` ...) are reference pauses,
+`--skip_labels` (e.g. `noise,overlap`) are left out, and `--ref_map map.json` rewrites the other
+labels into the model's phones (e.g. `{"ø": "ə"}` for a corpus that writes the schwa `ø`). The
+summary lists the reference labels that are not phones of the model; they count as errors. Results:
+`comparison.csv` (one row per recording and a `TOTAL` row; corpus figures pool the counts of all
+recordings), the scores in the summary and, with `--report`, in the pages: reference lane under the
+recognised phones (amber: substituted, red: inserted / deleted), reference boundaries and pauses
+in red on the attention, reference phones as red boxes on the posteriors and the top 5, and a
+"show reference" switch. A reference TextGrid is never overwritten (`-o` into the reference folder
+is refused when the names collide).
 
 How it works (`jointrecalign/transcribe.py`):
 1. The recording is cut into pieces of at most 10 s, back to back, so no audio is dropped.
@@ -401,6 +425,7 @@ CPU only. They need no data or pretrained weights:
 python tests/test_sil_fs.py   # latent-SIL DP vs brute force, gradients, batching, == ForwardSumLoss without SIL
 python tests/test_model.py    # full model on a tiny random wav2vec2: losses, gradient routing, SIL, L_energy, decoders
 python tests/test_transcribe.py   # chunking, pause joining, candidates, TextGrid/CSV, end to end on a tiny model
+python tests/test_reference.py    # TextGrid reading, reference labels, comparison scores
 ```
 
 The end-to-end part of `test_transcribe.py` needs `silero-vad` (in `requirements.txt`) and is
@@ -420,6 +445,7 @@ jointrecalign/
   transcribe.py           Silero chunking, decoding, top-5 candidates, TextGrid / CSV writers
   transcribe_cli.py       the JointRecAlign command
   report.py, report_assets/  the HTML report
+  reference.py            comparison with reference TextGrids
   download.py             download of the released model into a cache folder
   praat.py, praat_plugin/ the Praat plugin
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers

@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
-main { max-width: 1100px; margin: 0 auto; padding: 22px 16px 40px; }
+main { max-width: 1400px; margin: 0 auto; padding: 22px 16px 40px; }
 h1 { font-size: 20px; font-weight: 600; margin: 0; }
 .sub { color: var(--ink2); margin: 2px 0 14px; }
 .stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -24,7 +24,7 @@ input { font: inherit; color: var(--ink); background: var(--panel); border: 1px 
   padding: 6px 10px; width: min(320px, 100%); margin-bottom: 10px; }
 .wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
 th { font-weight: 600; color: var(--ink2); font-size: 12.5px; cursor: pointer; user-select: none; }
 th.sorted::after { content: " ▾"; color: var(--muted); }
@@ -34,6 +34,8 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 .bar { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--barbg); vertical-align: middle;
   margin-left: 8px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--accent); }
 .low { color: var(--low); }
+body:not(.has-ref) .cmp { display: none; }
+td.cmp { border-left: 1px solid var(--line); }
 .failed { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--low);
   border-radius: 8px; padding: 10px 14px; }
 .failed h2 { font-size: 14px; margin: 0 0 6px; } .failed li { color: var(--ink2); }
@@ -51,6 +53,10 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
       <th data-k="name">recording</th><th data-k="duration">duration</th><th data-k="phones">phones</th>
       <th data-k="pauses">pauses</th><th data-k="pause_time">pause time</th>
       <th data-k="mean_conf">mean probability</th><th data-k="low_conf">phones under 0.5</th>
+      <th class="cmp" data-k="PER" title="phone error rate vs the reference">PER</th>
+      <th class="cmp" data-k="F1@20" title="boundary F1 within 20 ms">F1 20 ms</th>
+      <th class="cmp" data-k="MedianBE" title="median boundary error of the phones that match the reference">median error</th>
+      <th class="cmp" data-k="pause_F1" title="pause F1 (intersection over union at least 0.5)">pause F1</th>
     </tr></thead><tbody id="rows"></tbody></table></div>
   <div id="failed"></div>
   <p class="note">The probabilities are the model's own and are not calibrated; "phones under 0.5" points to the
@@ -61,19 +67,29 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 const D = /*__DATA__*/null;
 const fmt = t => { const m = Math.floor(t / 60), s = Math.round(t - 60 * m); return `${m}:${String(s).padStart(2, "0")}`; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pc = v => v === null || v === undefined ? "–" : v.toFixed(1) + " %";
 const tot = D.rows.reduce((a, r) => (a.d += r.duration, a.p += r.phones, a.s += r.pauses, a), { d: 0, p: 0, s: 0 });
 document.getElementById("stats").innerHTML = [[D.rows.length, "recordings"], [fmt(tot.d), "audio"], [tot.p, "phones"],
-  [tot.s, "pauses"], [D.failed.length, "failed"]].map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
+  [tot.s, "pauses"], [D.failed.length, "failed"]].concat(D.total ? [
+    [pc(D.total.PER), "PER vs reference"], [pc(D.total["F1@20"]), "boundary F1 (20 ms)"],
+    [D.total.MedianBE === null ? "–" : Math.round(D.total.MedianBE) + " ms", "median boundary error"],
+    [pc(D.total.pause_F1), "pause F1"]] : [])
+  .map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
+if (D.total || D.rows.some(r => r.PER !== undefined)) document.body.classList.add("has-ref");
 let key = "name", asc = true;
 function render() {
   const q = document.getElementById("filter").value.toLowerCase();
   const rows = D.rows.filter(r => r.name.toLowerCase().includes(q)).sort((a, b) =>
-    (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * (asc ? 1 : -1));
+    (key === "name" ? a.name.localeCompare(b.name, undefined, { numeric: true })
+                    : (a[key] ?? Infinity) - (b[key] ?? Infinity)) * (asc ? 1 : -1));
   document.getElementById("rows").innerHTML = rows.map(r => `<tr>
     <td><a href="${encodeURIComponent(r.name)}.html">${esc(r.name)}</a></td><td>${fmt(r.duration)}</td><td>${r.phones}</td>
     <td>${r.pauses}</td><td>${r.pause_time.toFixed(1)} s</td>
     <td>${r.mean_conf === null ? "–" : r.mean_conf.toFixed(2)}<span class="bar"><i style="width:${(r.mean_conf || 0) * 100}%"></i></span></td>
-    <td class="${r.phones && r.low_conf / r.phones > 0.2 ? "low" : ""}">${r.low_conf}${r.phones ? ` (${Math.round(100 * r.low_conf / r.phones)} %)` : ""}</td></tr>`).join("");
+    <td class="${r.phones && r.low_conf / r.phones > 0.2 ? "low" : ""}">${r.low_conf}${r.phones ? ` (${Math.round(100 * r.low_conf / r.phones)} %)` : ""}</td>
+    <td class="cmp">${pc(r.PER)}</td><td class="cmp">${pc(r["F1@20"])}</td>
+    <td class="cmp">${r.MedianBE === null || r.MedianBE === undefined ? "–" : Math.round(r.MedianBE) + " ms"}</td>
+    <td class="cmp">${pc(r.pause_F1)}</td></tr>`).join("");
   document.querySelectorAll("th").forEach(th => { th.classList.toggle("sorted", th.dataset.k === key); th.classList.toggle("asc", asc); });
 }
 document.querySelectorAll("th").forEach(th => th.onclick = () => { if (key === th.dataset.k) asc = !asc; else { key = th.dataset.k; asc = key === "name"; } render(); });
