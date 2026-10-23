@@ -1,6 +1,6 @@
 # JointRecAlign: phones, boundaries, pauses and top-5 candidates of the selected Sounds,
 # as TextGrids added to the object list. No transcript is needed.
-# The line "command$ = ..." is written by `JointRecAlign --install-praat-plugin`.
+# The line "command$ = ..." is written by `JointRecAlign install-praat-plugin`.
 command$ = "@COMMAND@"
 
 form JointRecAlign: transcribe
@@ -28,7 +28,7 @@ for i to n
     files$ = files$ + " """ + file$[i] + ".wav"""
 endfor
 
-runSystem: command$, " --symbols ", symbols$, " -o """, folder$, """", files$
+runSystem: command$, " transcribe --symbols ", symbols$, " -o """, folder$, """", files$
 
 for i to n
     textgrid[i] = Read from file: file$[i] + ".TextGrid"

@@ -13,7 +13,8 @@
    overlaps, labels and tier names as documented.
 5. End to end on a tiny random latent-SIL model and 25 s of synthetic audio:
    load_model, transcribe (several chunks), writers, and the command line
-   (default results folder, a damaged file among good ones).
+   (validate, default results folder, a damaged file among good ones, summary,
+   log, HTML report).
    Needs silero-vad (skipped without it).
 6. Model download on first use (from a local zip), then reuse of the cache.
 7. Praat plugin installation.
@@ -217,15 +218,32 @@ def test_end_to_end():
         assert os.path.exists(f"{d}/out/rec.TextGrid") and os.path.exists(f"{d}/out/rec.csv")
         r = subprocess.run([sys.executable, os.path.join(root, "transcribe.py"), "--model", f"{d}/model",
                             "-o", f"{d}/out", f"{d}/model/vocab.json"], capture_output=True, text=True, cwd=root)
-        assert r.returncode != 0 and "not a supported audio file" in r.stderr, r.stderr[-500:]
-        # `JointRecAlign` (python -m jointrecalign) without -o: results in JointRecAlign/ next to the
-        # recordings; a damaged file is reported and the others are still transcribed
+        assert r.returncode == 1 and "not a supported audio file" in r.stdout, r.stdout[-500:] + r.stderr[-500:]
+        # `JointRecAlign transcribe` (python -m jointrecalign) without -o: results in JointRecAlign/ next to
+        # the recordings; a damaged file is reported by the check and the others are still transcribed;
+        # --report: one HTML page per recording and index.html
         open(f"{d}/damaged.wav", "wb").write(b"not audio")
-        r = subprocess.run([sys.executable, "-m", "jointrecalign", "--model", f"{d}/model", "--device", "cpu",
-                            d], capture_output=True, text=True, cwd=root)
-        assert r.returncode == 1 and "damaged: FAILED" in r.stdout and "1 failed" in r.stdout, r.stdout + r.stderr
-        assert os.path.exists(f"{d}/JointRecAlign/rec.TextGrid") and os.path.exists(f"{d}/JointRecAlign/rec.csv")
-        assert not os.path.exists(f"{d}/JointRecAlign/damaged.TextGrid")
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "transcribe", "--model", f"{d}/model",
+                            "--device", "cpu", "--report", d], capture_output=True, text=True, cwd=root)
+        out = r.stdout
+        assert r.returncode == 1, out + r.stderr
+        assert "damaged.wav: cannot read the audio" in out and "1 NOT transcribed" in out, out
+        assert "rec.wav: 2 channels" in out, out                              # warning from the check
+        res = f"{d}/JointRecAlign"
+        for f in ("rec.TextGrid", "rec.csv", "rec.html", "index.html", "JointRecAlign.log"):
+            assert os.path.exists(f"{res}/{f}"), f
+        assert not os.path.exists(f"{res}/damaged.TextGrid")
+        assert "1 NOT transcribed" in open(f"{res}/JointRecAlign.log", encoding="utf-8").read()
+        page = open(f"{res}/rec.html", encoding="utf-8").read()
+        data = json.loads(re.search(r"const D = (\{.*?\});\n", page).group(1))
+        assert data["audio"] == "../rec.wav" and abs(data["duration"] - dur) < 1e-3, (data["audio"], data["duration"])
+        assert len(data["phones"]) == len(phones) and data["rows"][0] == "blank" and data["tokens"], data["rows"]
+        assert sum(c["T"] for c in data["chunks"]) > 0.9 * dur / data["hop"]
+        idx = json.loads(re.search(r"const D = (\{.*?\});\n", open(f"{res}/index.html", encoding="utf-8").read()).group(1))
+        assert [x["name"] for x in idx["rows"]] == ["rec"] and idx["failed"][0][0] == "damaged.wav", idx
+        # validate alone: no model, same check
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "validate", d], capture_output=True, text=True, cwd=root)
+        assert r.returncode == 1 and "1 can be transcribed, 1 cannot" in r.stdout, r.stdout + r.stderr
     print(f"end to end ok ({len(phones)} phones, {len(pauses)} pauses)")
 
 

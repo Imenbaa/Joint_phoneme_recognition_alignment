@@ -1,6 +1,6 @@
 """Install the Praat plugin: a "JointRecAlign: transcribe..." button for selected Sounds.
 
-    JointRecAlign --install-praat-plugin
+    JointRecAlign install-praat-plugin
 
 The plugin folder plugin_JointRecAlign goes into Praat's preferences folder
 (PRAAT_PREFS_DIR overrides it); Praat reads it when it starts.
@@ -38,4 +38,4 @@ def install_plugin():
         f.write(script.replace("@COMMAND@", command))
     print(f"Praat plugin installed in {dest}\n"
           "Restart Praat, select one or more Sounds, and click \"JointRecAlign: transcribe...\".\n"
-          "The first time, the model is downloaded (1.2 GB); to do that now: JointRecAlign --download")
+          "The first time, the model is downloaded (1.2 GB); to do that now: JointRecAlign download")

@@ -10,7 +10,7 @@ to transcribe recordings into Praat TextGrids (phones, boundaries, pauses and th
 candidates for each phone), with no transcript needed.
 
 **Phoneticians: start with the [step-by-step guide](GUIDE.md)**: install with two commands, then
-transcribe from a window, from Praat, or with one command.
+transcribe a corpus with one command (with an optional HTML report of the plots), or from Praat.
 
 ## Contents
 
@@ -125,14 +125,21 @@ recording, the phones the model hears, their boundaries, the pauses, and the mod
 candidates for each phone. It runs on GPU or CPU.
 
 ```bash
-JointRecAlign recording1.wav recording2.wav recordings_folder/
-JointRecAlign                               # no argument: a window to choose the recordings
-JointRecAlign --install-praat-plugin        # a "JointRecAlign: transcribe..." button for Sounds in Praat
+JointRecAlign validate recordings_folder/                 # check the audio files (no model)
+JointRecAlign transcribe recordings_folder/ [-o out/]     # check, then transcribe
+JointRecAlign transcribe recordings_folder/ --report      # + one HTML page per recording, index.html
+JointRecAlign install-praat-plugin                        # a "JointRecAlign: transcribe..." button for Sounds in Praat
 ```
+
+`transcribe` checks every file first (readable, at least 0.5 s, not silent; warnings for a
+sampling rate under 16 kHz, several channels, clipping, very low level, two recordings that
+would write the same result files), skips the files that cannot be transcribed, goes on when
+one fails, and ends with a summary, also written to `JointRecAlign.log`. The exit code is 1 when
+a recording was not transcribed.
 
 **The model** ([`aligner_10ms_sil_alpha0.1.zip`](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip),
 1.2 GB, [release v0.1.0](https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/tag/v0.1.0),
-licence CC BY-NC 4.0) is downloaded and checked the first time (or with `JointRecAlign --download`)
+licence CC BY-NC 4.0) is downloaded and checked the first time (or with `JointRecAlign download`)
 into a cache folder: `~/.cache/JointRecAlign` (Linux), `~/Library/Caches/JointRecAlign` (macOS),
 `%LOCALAPPDATA%\JointRecAlign` (Windows); `JOINTRECALIGN_HOME` changes it. Any stage-3 checkpoint
 you train yourself (joint aligner with latent silence, see [Training](#training)) works with
@@ -142,12 +149,14 @@ Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo (resampled
 downmixed). A folder means every audio file in it. A recording that cannot be read is reported
 and the others are still transcribed.
 
-For each recording, in a folder `JointRecAlign/` next to the recording (or in `-o`):
+For each recording, in a folder `JointRecAlign/` next to the recording (or in `-o`), and
+`JointRecAlign.log`:
 
 | file | content |
 |---|---|
 | `<name>.TextGrid` | Praat interval tiers, all covering the whole recording |
 | `<name>.csv` | one row per phone: `start`, `end`, `phone`, then `top1`, `p1` ... `top5`, `p5` |
+| `<name>.html` | with `--report`: waveform, phones and pauses, the aligner's attention with the alignment path, the CTC posteriors of every phone, the top 5 of each frame, on one time axis that scrolls and zooms; self-contained, no server (`index.html` lists the recordings) |
 
 | tier | label of each interval |
 |---|---|
@@ -159,6 +168,7 @@ For each recording, in a folder `JointRecAlign/` next to the recording (or in `-
 | option | meaning |
 |---|---|
 | `-o folder` | where the results go (default: `JointRecAlign/` next to each recording) |
+| `--report` | also the HTML pages (about 0.6 MB per minute of audio) |
 | `--model folder` | another model (default: the released one, downloaded the first time) |
 | `--symbols ipa` (default) / `model` | `ipa` writes the nasal vowels and œ in IPA (`ɑ̃ ɛ̃ ɔ̃ œ`); `model` keeps the model's one-character codes (`@ 1 § 9`) |
 | `--phone_map map.json` | your own labels, applied last, e.g. `{"ə": "ø"}` for a corpus that writes the schwa `ø` |
@@ -409,7 +419,7 @@ recipes/                  one script per stage, with the settings of the trained
 jointrecalign/
   transcribe.py           Silero chunking, decoding, top-5 candidates, TextGrid / CSV writers
   transcribe_cli.py       the JointRecAlign command
-  gui.py                  its window
+  report.py, report_assets/  the HTML report
   download.py             download of the released model into a cache folder
   praat.py, praat_plugin/ the Praat plugin
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers

@@ -162,13 +162,20 @@ def _candidates(post_f, sym_ids, sym_labels, k=K):
 
 @torch.inference_mode()
 def transcribe_chunk(model, fe, tok, seg, cs, sym_ids, sym_labels, device, positions, k_min, sil_logp,
-                     hop, off):
+                     hop, off, trace=None):
+    """-> (phones, SIL runs) of one chunk; with a list as trace, also appends the model's
+    internals for the report: CTC log posteriors, log attention and the SIL-Viterbi path."""
     m = getattr(model, "module", model)
     x = fe(E.to_model_rate(seg, m), sampling_rate=fe.sampling_rate, return_tensors="pt",
            return_attention_mask=True)
     o = model(input_values=x.input_values.to(device), attention_mask=x.attention_mask.to(device),
               labels=None, prior_weight=0.0, ctc_weight=0.0, align_weight=0.0, contrastive_weight=0.0)
     T, P = int(o.input_lengths[0]), int(o.text_lengths[0])
+    t = None
+    if trace is not None:
+        t = {"start": cs, "frames": T, "hop": hop, "offset": off, "ctc_logp": o.ctc_logits[0, :T].float().log_softmax(-1).cpu().numpy(),
+             "tokens": [], "att_logp": None, "path": None}
+        trace.append(t)
     if P == 0:                                  # nothing recognised in this chunk
         return [], []
     pred = o.predicted_phone_ids[0, :P].cpu().tolist()
@@ -180,6 +187,8 @@ def transcribe_chunk(model, fe, tok, seg, cs, sym_ids, sym_labels, device, posit
     if path is None:
         return [], []
     st = [None if top["col"][s] < 0 else int(top["col"][s]) for s in path]
+    if t is not None:
+        t.update(tokens=tokens, att_logp=lp, path=[-1 if v is None else v for v in st])
     phones, sils = _phones_with_tokens(st, tokens, cs, hop, off)
 
     # peak frame of each decoded token in its greedy CTC run
@@ -221,8 +230,9 @@ def load_model(checkpoint, vocab_path=None, device=None):
     return model, fe, tok, device
 
 
-def transcribe(path, model, fe, tok, device, max_chunk=10.0, symbol_map=None):
-    """-> (phones [{phone, start, end, cands: [(symbol, prob)] * K}], pauses [(s, e)], duration)."""
+def transcribe(path, model, fe, tok, device, max_chunk=10.0, symbol_map=None, trace=None):
+    """-> (phones [{phone, start, end, cands: [(symbol, prob)] * K}], pauses [(s, e)], duration).
+    trace: a list that receives one dict per chunk for the report (see transcribe_chunk)."""
     symbol_map = symbol_map or {}
     off = sil_eval._set_frame(model)
     hop = sil_eval.HOP
@@ -244,7 +254,7 @@ def transcribe(path, model, fe, tok, device, max_chunk=10.0, symbol_map=None):
         if len(seg) < 400:                     # under one conv receptive field
             continue
         ph, si = transcribe_chunk(model, fe, tok, seg, c0, sym_ids, sym_labels, device,
-                                  positions, k_min, sil_logp, hop, off)
+                                  positions, k_min, sil_logp, hop, off, trace)
         phones += ph
         pauses += si
     for p in phones:

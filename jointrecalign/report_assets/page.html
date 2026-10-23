@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · JointRecAlign</title>
+<style>
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --ink2: #55544f; --muted: #8a8983;
+  --line: #e2e0d9; --accent: #2f6fb2; --accent-soft: rgba(47,111,178,.14);
+  --phone: #ece9e0; --phone-ink: #1d1d1b; --low: #c0392b; --pause: #b9b5a8;
+  --wave: #4b5d73; --play: #d1495b; --view: rgba(47,111,178,.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #201f1d; --ink: #ecebe6; --ink2: #b4b2aa; --muted: #85837c;
+    --line: #34332f; --accent: #6ea8e6; --accent-soft: rgba(110,168,230,.18);
+    --phone: #2e2d29; --phone-ink: #ecebe6; --low: #ef7d6d; --pause: #5b5850;
+    --wave: #9fb4cc; --play: #ff7a8a; --view: rgba(110,168,230,.22);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #201f1d; --ink: #ecebe6; --ink2: #b4b2aa; --muted: #85837c;
+  --line: #34332f; --accent: #6ea8e6; --accent-soft: rgba(110,168,230,.18);
+  --phone: #2e2d29; --phone-ink: #ecebe6; --low: #ef7d6d; --pause: #5b5850;
+  --wave: #9fb4cc; --play: #ff7a8a; --view: rgba(110,168,230,.22);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+header { padding: 18px 16px 6px; max-width: 1600px; margin: 0 auto; }
+header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+header .sub { color: var(--ink2); margin-top: 2px; }
+header a { color: var(--accent); }
+.stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; }
+.stat b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+main { max-width: 1600px; margin: 0 auto; padding: 0 16px 40px; }
+.toolbar { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 8px;
+  align-items: center; flex-wrap: wrap; padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+button, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 92px; }
+.range { font-variant-numeric: tabular-nums; color: var(--ink2); margin-left: 4px; }
+.hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; }
+.panel > summary { list-style: none; cursor: pointer; padding: 8px 12px; display: flex; gap: 10px;
+  align-items: baseline; flex-wrap: wrap; }
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before { content: "▾"; color: var(--muted); width: 10px; }
+.panel:not([open]) > summary::before { content: "▸"; }
+.panel h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.panel .what { color: var(--ink2); font-size: 12.5px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--ink2);
+  font-size: 12px; padding: 0 12px 6px 34px; }
+.legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px;
+  margin-right: 5px; }
+.scale { width: 120px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: -1px; margin: 0 5px; }
+canvas { display: block; width: 100%; touch-action: none; }
+.cv { padding: 0 8px 8px; }
+#overview { height: 44px; cursor: pointer; }
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); display: none; min-width: 170px; }
+#tip .t { color: var(--muted); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+#tip .r { display: grid; grid-template-columns: 18px 44px 1fr 46px; gap: 6px; align-items: center; }
+#tip .bar { height: 6px; border-radius: 3px; background: var(--accent); }
+#tip .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); }
+#tip .k { color: var(--muted); }
+#tip .sym { font-weight: 600; }
+.note { color: var(--muted); font-size: 12px; margin-top: 14px; }
+@media (max-width: 640px) { .hint { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <div class="sub">JointRecAlign: phones, boundaries and pauses recognised from the audio alone.
+    <a href="index.html">All recordings</a></div>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <div class="toolbar">
+    <button class="primary" id="play">▶ Play view</button>
+    <button id="zoomout" title="Zoom out (−)">−</button>
+    <button id="zoomin" title="Zoom in (+)">+</button>
+    <select id="win" title="Window length">
+      <option value="2">2 s</option><option value="5">5 s</option><option value="10" selected>10 s</option>
+      <option value="20">20 s</option><option value="60">1 min</option><option value="all">all</option>
+    </select>
+    <span class="range" id="range"></span>
+    <span class="hint">drag to scroll · ⌘/Ctrl + wheel to zoom · click a phone to hear it · space: play</span>
+  </div>
+
+  <div class="panel" style="padding:8px 8px 4px"><canvas id="overview"></canvas></div>
+
+  <details class="panel" open>
+    <summary><h2>Recording</h2><span class="what">waveform, recognised phones (red outline: probability under 0.5) and pauses</span></summary>
+    <div class="cv"><canvas id="tiers"></canvas></div>
+  </details>
+
+  <details class="panel" open>
+    <summary><h2>Attention</h2><span class="what">how strongly each frame attends to each recognised phone and to SIL; the line is the alignment path that gives the boundaries</span></summary>
+    <div class="legend"><span>log attention</span><span>−10<span class="scale viridis"></span>0</span>
+      <span><i style="background:#fff;border:1px solid #888"></i>alignment path</span></div>
+    <div class="cv"><canvas id="att"></canvas></div>
+  </details>
+
+  <details class="panel" open>
+    <summary><h2>Phone posteriors</h2><span class="what">probability of every phone of the model in each frame (CTC head); dashed boxes: the recognised phones</span></summary>
+    <div class="legend"><span>log posterior</span><span>−10<span class="scale viridis"></span>0</span>
+      <span>bottom lane: P(blank), the "no new phone here" symbol</span></div>
+    <div class="cv"><canvas id="post"></canvas></div>
+  </details>
+
+  <details class="panel" open>
+    <summary><h2>Top 5 per frame</h2><span class="what">the five most probable symbols of each frame, by rank (blank included)</span></summary>
+    <div class="legend" id="ranklegend"></div>
+    <div class="cv"><canvas id="top5"></canvas></div>
+  </details>
+
+  <p class="note">Probabilities are the model's own and are not calibrated: the first candidate is often given
+    about 0.99 even when it is wrong, but the order of the candidates is informative.</p>
+  <audio id="audio" preload="none"></audio>
+</main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const D = /*__DATA__*/null;
+
+// ---------- data ----------
+function bytes(b64) { const s = atob(b64), a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+function int16(b64) { const u = bytes(b64); return new Int16Array(u.buffer, 0, u.length >> 1); }
+const HOP = D.hop, FLOOR = D.floor, BAND = D.band, NR = D.rows.length, DUR = D.duration;
+const wave = new Int8Array(bytes(D.wave).buffer);
+const chunks = D.chunks.map(c => {
+  const o = { t0: c.t0, T: c.T, post: bytes(c.post) };
+  if (c.band) Object.assign(o, { tok0: c.tok0, P: c.P, center: int16(c.center), path: int16(c.path),
+    band: bytes(c.band), sil: bytes(c.sil) });
+  return o;
+});
+const phones = D.phones.map(p => ({ s: p[0], e: p[1], ph: p[2], c: p[3] }));
+const rowOf = {}; D.rows.forEach((l, r) => { if (!(l in rowOf)) rowOf[l] = r; });
+
+// ---------- colours ----------
+const VIR = ["#440154","#481a6c","#472f7d","#414487","#39568c","#31688e","#2a788e","#23888e",
+             "#1f988b","#22a884","#35b779","#54c568","#7ad151","#a5db36","#d2e21b","#fde725"]
+  .map(h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]);
+const LUT = new Uint8ClampedArray(256 * 3);
+for (let i = 0; i < 256; i++) { const x = i / 255 * 15, k = Math.min(14, Math.floor(x)), f = x - k;
+  for (let j = 0; j < 3; j++) LUT[i*3+j] = VIR[k][j] + (VIR[k+1][j] - VIR[k][j]) * f; }
+const lutCss = i => `rgb(${LUT[i*3]},${LUT[i*3+1]},${LUT[i*3+2]})`;
+document.querySelectorAll(".scale.viridis").forEach(el =>
+  el.style.background = `linear-gradient(90deg, ${VIR.map(c => `rgb(${c})`).join(",")})`);
+const RANK = [[8,48,107],[33,113,181],[66,146,198],[107,174,214],[166,206,228]];
+document.getElementById("ranklegend").innerHTML = "rank in the frame " + RANK.map((c, i) =>
+  `<span><i style="background:rgb(${c})"></i>${["1st","2nd","3rd","4th","5th"][i]}</span>`).join("");
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// pre-rendered images, one pixel per frame and row
+function img(w, h, fill) { const c = document.createElement("canvas"); c.width = Math.max(1, w); c.height = Math.max(1, h);
+  const x = c.getContext("2d"), d = x.createImageData(c.width, c.height); fill(d.data); x.putImageData(d, 0, 0); return c; }
+for (const c of chunks) {
+  c.postImg = img(c.T, NR, px => { for (let r = 0; r < NR; r++) { const y = NR - 1 - r;
+    for (let f = 0; f < c.T; f++) { const v = c.post[r * c.T + f], o = (y * c.T + f) * 4;
+      px[o] = LUT[v*3]; px[o+1] = LUT[v*3+1]; px[o+2] = LUT[v*3+2]; px[o+3] = 255; } } });
+  c.rankImg = img(c.T, NR, px => { const col = new Array(NR);
+    for (let f = 0; f < c.T; f++) { for (let r = 0; r < NR; r++) col[r] = [c.post[r * c.T + f], r];
+      col.sort((a, b) => b[0] - a[0]);
+      for (let k = 0; k < 5 && k < NR; k++) { const y = NR - 1 - col[k][1], o = (y * c.T + f) * 4;
+        px[o] = RANK[k][0]; px[o+1] = RANK[k][1]; px[o+2] = RANK[k][2]; px[o+3] = 255; } } });
+}
+
+// ---------- view ----------
+let v0 = 0, v1 = Math.min(DUR, 10);
+const GUT = 64;                                      // left gutter for row labels
+const fmt = t => { const m = Math.floor(t / 60), s = t - 60 * m; return `${m}:${s.toFixed(2).padStart(5, "0")}`; };
+let setView = function (a, b) { let w = Math.max(0.2, Math.min(DUR, b - a)); a = Math.max(0, Math.min(DUR - w, a));
+  v0 = a; v1 = a + w; draw(); };
+const X = (t, W) => GUT + (t - v0) / (v1 - v0) * (W - GUT);
+const Tm = (x, W) => v0 + (x - GUT) / (W - GUT) * (v1 - v0);
+
+function setup(cv, h) { const dpr = window.devicePixelRatio || 1, W = cv.clientWidth;
+  cv.style.height = h + "px"; cv.width = Math.round(W * dpr); cv.height = Math.round(h * dpr);
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.imageSmoothingEnabled = false;
+  x.font = "11px -apple-system, Segoe UI, Roboto, sans-serif"; return [x, W, h]; }
+
+function grid(x, W, top, bot, labels) {
+  const span = v1 - v0, steps = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300];
+  const st = steps.find(s => span / s <= Math.max(4, (W - GUT) / 90)) || 600;
+  x.strokeStyle = css("--line"); x.fillStyle = css("--muted"); x.lineWidth = 1;
+  for (let t = Math.ceil(v0 / st) * st; t <= v1 + 1e-9; t += st) { const px = Math.round(X(t, W)) + 0.5;
+    x.beginPath(); x.moveTo(px, top); x.lineTo(px, bot); x.stroke();
+    if (labels) x.fillText(st < 1 ? t.toFixed(st < 0.1 ? 2 : 1) : fmt(t).replace(/\.00$/, ""), px + 3, bot - 3); }
+}
+function playhead(x, W, h) { const t = audio.currentTime; if (t < v0 || t > v1 || (!playing && t === 0)) return;
+  x.strokeStyle = css("--play"); x.lineWidth = 1.5; x.beginPath(); x.moveTo(X(t, W), 0); x.lineTo(X(t, W), h); x.stroke(); }
+
+function visibleChunks() { return chunks.filter(c => c.t0 + c.T * HOP > v0 && c.t0 < v1); }
+
+// ---------- panels ----------
+function drawOverview() {
+  const [x, W, h] = setup(document.getElementById("overview"), 44); x.clearRect(0, 0, W, h);
+  const n = wave.length / 2, mid = h / 2 - 4;
+  x.fillStyle = css("--wave"); x.globalAlpha = 0.55;
+  for (let px = 0; px < W; px++) { const a = Math.floor(px / W * n), b = Math.max(a + 1, Math.floor((px + 1) / W * n));
+    let lo = 0, hi = 0; for (let i = a; i < b && i < n; i++) { lo = Math.min(lo, wave[2*i]); hi = Math.max(hi, wave[2*i+1]); }
+    x.fillRect(px, mid - hi / 127 * mid, 1, Math.max(1, (hi - lo) / 127 * mid)); }
+  x.globalAlpha = 1; x.fillStyle = css("--pause");
+  for (const [s, e] of D.pauses) x.fillRect(s / DUR * W, h - 5, Math.max(1, (e - s) / DUR * W), 4);
+  x.fillStyle = css("--view"); x.fillRect(v0 / DUR * W, 0, Math.max(2, (v1 - v0) / DUR * W), h);
+  x.strokeStyle = css("--accent"); x.lineWidth = 1.5; x.strokeRect(v0 / DUR * W + .5, .5, Math.max(2, (v1 - v0) / DUR * W) - 1, h - 1);
+  const t = audio.currentTime; if (t > 0) { x.fillStyle = css("--play"); x.fillRect(t / DUR * W, 0, 1.5, h); }
+}
+
+function drawTiers() {
+  const H = 170, WV = 92, PH = 34, PA = 22;
+  const [x, W] = setup(document.getElementById("tiers"), H); x.clearRect(0, 0, W, H);
+  grid(x, W, 0, WV + PH + PA + 6, false);
+  x.save(); x.beginPath(); x.rect(GUT, 0, W - GUT, H); x.clip();
+  // waveform
+  const n = wave.length / 2, mid = WV / 2;
+  x.fillStyle = css("--wave");
+  for (let px = GUT; px < W; px++) { const a = Math.max(0, Math.floor(Tm(px, W) / HOP)), b = Math.max(a + 1, Math.floor(Tm(px + 1, W) / HOP));
+    if (a >= n) break; let lo = 0, hi = 0;
+    for (let i = a; i < b && i < n; i++) { lo = Math.min(lo, wave[2*i]); hi = Math.max(hi, wave[2*i+1]); }
+    x.fillRect(px, mid - hi / 127 * (mid - 2), 1, Math.max(1, (hi - lo) / 127 * (mid - 2))); }
+  // phones
+  const y0 = WV + 4;
+  for (const p of phones) { if (p.e < v0 || p.s > v1) continue;
+    const a = X(p.s, W), b = X(p.e, W), low = p.c.length && p.c[0][1] < 0.5;
+    x.fillStyle = p === hover ? css("--accent-soft") : css("--phone"); x.fillRect(a + 0.5, y0, Math.max(1, b - a - 1), PH);
+    if (low) { x.strokeStyle = css("--low"); x.lineWidth = 1.5; x.strokeRect(a + 1, y0 + .75, Math.max(1, b - a - 2), PH - 1.5); }
+    if (b - a > 9) { x.fillStyle = css("--phone-ink"); x.font = (b - a > 26 ? "15px" : "12px") + " -apple-system, Segoe UI, Roboto, sans-serif";
+      x.textAlign = "center"; x.fillText(p.ph, (a + b) / 2, y0 + PH / 2 + 5); x.textAlign = "left"; } }
+  // pauses
+  const y1 = y0 + PH + 4; x.font = "11px -apple-system, Segoe UI, Roboto, sans-serif";
+  for (const [s, e] of D.pauses) { if (e < v0 || s > v1) continue; const a = X(s, W), b = X(e, W);
+    x.fillStyle = css("--pause"); x.fillRect(a, y1, Math.max(1, b - a), PA);
+    if (b - a > 26) { x.fillStyle = css("--phone-ink"); x.textAlign = "center"; x.fillText("SIL", (a + b) / 2, y1 + 15); x.textAlign = "left"; } }
+  x.restore();
+  // gutter labels and time axis
+  x.fillStyle = css("--ink2"); x.fillText("waveform", 4, 14); x.fillText("phones", 4, y0 + PH / 2 + 4); x.fillText("pauses", 4, y1 + 15);
+  x.fillStyle = css("--muted"); grid(x, W, y1 + PA + 4, H, true);
+  playhead(x, W, H);
+}
+
+function drawAtt() {
+  const H = 300, SILH = 18;
+  const [x, W] = setup(document.getElementById("att"), H); x.clearRect(0, 0, W, H);
+  const vis = visibleChunks().filter(c => c.band);
+  if (!vis.length) { x.fillStyle = css("--muted"); x.fillText("no phone recognised here", GUT + 8, 20); return; }
+  let lo = 1e9, hi = -1e9;
+  for (const c of vis) { const f0 = Math.max(0, Math.floor((v0 - c.t0) / HOP)), f1 = Math.min(c.T, Math.ceil((v1 - c.t0) / HOP));
+    for (let f = f0; f < f1; f++) { const g = c.tok0 + c.center[f]; lo = Math.min(lo, g); hi = Math.max(hi, g); } }
+  lo = Math.max(0, lo - 2); hi = Math.min(D.tokens.length - 1, hi + 2);
+  const top = SILH + 6, rh = (H - top - 4) / (hi - lo + 1);
+  const yOf = g => H - 4 - (g - lo + 1) * rh;
+  x.fillStyle = "#000"; x.fillRect(GUT, 0, W - GUT, H);
+  for (const c of vis) {
+    const f0 = Math.max(0, Math.floor((v0 - c.t0) / HOP)), f1 = Math.min(c.T, Math.ceil((v1 - c.t0) / HOP));
+    const fw = (W - GUT) * HOP / (v1 - v0), step = Math.max(1, Math.floor(1 / fw));
+    for (let f = f0; f < f1; f += step) { const px = X(c.t0 + f * HOP, W), w = Math.max(1, fw * step + 0.5);
+      let v = c.sil[f]; x.fillStyle = lutCss(v); x.fillRect(px, 0, w, SILH);
+      for (let k = -BAND; k <= BAND; k++) { const r = c.center[f] + k; if (r < 0 || r >= c.P) continue;
+        const g = c.tok0 + r; if (g < lo || g > hi) continue;
+        v = c.band[(k + BAND) * c.T + f]; x.fillStyle = lutCss(v); x.fillRect(px, yOf(g), w, rh + 0.5); } }
+    // path
+    x.strokeStyle = "#ffffff"; x.lineWidth = 1.3; x.beginPath(); let started = false;
+    for (let f = f0; f < f1; f++) { const px = X(c.t0 + (f + 0.5) * HOP, W), p = c.path[f];
+      const y = p < 0 ? SILH / 2 : yOf(c.tok0 + p) + rh / 2;
+      if (!started) { x.moveTo(px, y); started = true; } else x.lineTo(px, y); }
+    x.stroke();
+  }
+  // chunk edges
+  x.strokeStyle = "rgba(255,255,255,.35)"; x.setLineDash([3, 3]);
+  for (const c of vis) { const px = X(c.t0, W); if (px > GUT) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, H); x.stroke(); } }
+  x.setLineDash([]);
+  x.fillStyle = css("--bg"); x.fillRect(0, 0, GUT, H);
+  x.fillStyle = css("--ink2"); x.fillText("SIL", 6, SILH - 5);
+  if (rh >= 9) for (let g = lo; g <= hi; g++) x.fillText(D.tokens[g], 6, yOf(g) + rh / 2 + 4);
+  else { x.fillStyle = css("--muted"); x.fillText("phones", 6, top + 14); x.fillText("(zoom in)", 6, top + 28); }
+  playhead(x, W, H);
+}
+
+function heat(id, key, boxes) {
+  const BL = key === "postImg" ? 34 : 0, H = Math.max(260, NR * 11) + BL;
+  const [x, W] = setup(document.getElementById(id), H); x.clearRect(0, 0, W, H);
+  const HH = H - BL, rh = HH / NR, yOf = r => HH - (r + 1) * rh;
+  x.fillStyle = key === "rankImg" ? (css("--panel")) : "#000"; x.fillRect(GUT, 0, W - GUT, HH);
+  for (const c of visibleChunks()) {
+    const f0 = Math.max(0, Math.floor((v0 - c.t0) / HOP)), f1 = Math.min(c.T, Math.ceil((v1 - c.t0) / HOP));
+    if (f1 <= f0) continue;
+    const a = X(c.t0 + f0 * HOP, W), b = X(c.t0 + f1 * HOP, W);
+    x.drawImage(c[key], f0, 0, f1 - f0, NR, a, 0, b - a + 0.5, HH);
+  }
+  // class separators
+  x.strokeStyle = key === "rankImg" ? css("--line") : "rgba(255,255,255,.35)"; x.lineWidth = 1;
+  for (const r of D.breaks) { x.beginPath(); x.moveTo(GUT, HH - r * rh); x.lineTo(W, HH - r * rh); x.stroke(); }
+  // recognised phones
+  x.setLineDash([4, 3]); x.lineWidth = 1.2; x.strokeStyle = key === "rankImg" ? css("--ink") : "#ffffff";
+  for (const p of phones) { if (p.e < v0 || p.s > v1) continue; const r = rowOf[p.ph]; if (r === undefined) continue;
+    x.strokeRect(X(p.s, W), yOf(r) + 0.5, X(p.e, W) - X(p.s, W), rh - 1); }
+  x.setLineDash([]);
+  // blank lane
+  if (BL) { const y0 = HH + 6, hb = BL - 10; x.strokeStyle = css("--line"); x.strokeRect(GUT + .5, y0 + .5, W - GUT - 1, hb);
+    x.strokeStyle = css("--ink"); x.lineWidth = 1.2; x.beginPath(); let st = false;
+    for (const c of visibleChunks()) { const f0 = Math.max(0, Math.floor((v0 - c.t0) / HOP)), f1 = Math.min(c.T, Math.ceil((v1 - c.t0) / HOP));
+      const step = Math.max(1, Math.floor((f1 - f0) / (W - GUT)));
+      for (let f = f0; f < f1; f += step) { const pb = Math.exp(FLOOR + c.post[f] / 255 * -FLOOR);
+        const px = X(c.t0 + (f + .5) * HOP, W), y = y0 + hb - pb * hb;
+        if (!st) { x.moveTo(px, y); st = true; } else x.lineTo(px, y); } }
+    x.stroke(); x.fillStyle = css("--ink2"); x.fillText("P(blank)", 4, y0 + hb / 2 + 4); }
+  // labels
+  x.fillStyle = css("--bg"); x.fillRect(0, 0, GUT, HH);
+  x.fillStyle = css("--ink2"); x.font = (rh >= 11 ? "11px" : "9px") + " -apple-system, Segoe UI, Roboto, sans-serif";
+  if (rh >= 7) D.rows.forEach((l, r) => x.fillText(l, 6, yOf(r) + rh / 2 + 3.5));
+  playhead(x, W, H);
+}
+
+function draw() {
+  document.getElementById("range").textContent = `${fmt(v0)} – ${fmt(v1)}  (${(v1 - v0).toFixed(1)} s)`;
+  drawOverview(); drawTiers();
+  if (document.getElementById("att").closest("details").open) drawAtt();
+  if (document.getElementById("post").closest("details").open) heat("post", "postImg");
+  if (document.getElementById("top5").closest("details").open) heat("top5", "rankImg");
+}
+
+// ---------- header ----------
+document.getElementById("title").textContent = D.name;
+const conf = phones.filter(p => p.c.length).map(p => p.c[0][1]);
+const stats = [[fmt(DUR).replace(/\.\d\d$/, ""), "duration"], [phones.length, "phones"], [D.pauses.length, "pauses"],
+  [conf.filter(c => c < 0.5).length, "phones under 0.5"]];
+document.getElementById("stats").innerHTML = stats.map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
+
+// ---------- audio ----------
+const audio = document.getElementById("audio");          // loaded on the first play
+let playing = false, stopAt = null;
+const playBtn = document.getElementById("play");
+function play(a, b) { if (!audio.src) audio.src = D.audio; audio.currentTime = a; stopAt = b; audio.play().catch(() => alert("The recording could not be played: " +
+  "it must stay where it was when the report was made (" + D.audio + ").")); }
+playBtn.onclick = () => { if (playing) audio.pause(); else play(audio.currentTime > v0 && audio.currentTime < v1 - 0.05 ? audio.currentTime : v0, v1); };
+audio.onplay = () => { playing = true; playBtn.textContent = "❚❚ Pause"; tick(); };
+audio.onpause = () => { playing = false; playBtn.textContent = "▶ Play view"; draw(); };
+function tick() { if (!playing) return;
+  if (stopAt !== null && audio.currentTime >= stopAt) { audio.pause(); stopAt = null; return; }
+  if (audio.currentTime > v1) setView(audio.currentTime, audio.currentTime + (v1 - v0)); else draw();
+  requestAnimationFrame(tick); }
+
+// ---------- interaction ----------
+const tip = document.getElementById("tip"); let hover = null;
+function phoneAt(t) { return phones.find(p => t >= p.s && t < p.e) || null; }
+function showTip(p, ev) {
+  if (!p) { tip.style.display = "none"; return; }
+  tip.innerHTML = `<div class="t">${p.s.toFixed(3)} – ${p.e.toFixed(3)} s · ${Math.round((p.e - p.s) * 1000)} ms</div>` +
+    p.c.map(([s, v], i) => `<div class="r"><span class="k">${i + 1}</span><span class="sym">${s}</span>` +
+      `<span><span class="bar" style="display:block;width:${Math.max(2, v * 100)}%"></span></span><span class="num">${v < 0.001 ? "<0.001" : v.toFixed(3)}</span></div>`).join("");
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - r.width - 8, ev.clientX + 14) + "px";
+  tip.style.top = (ev.clientY + 16 + r.height > window.innerHeight ? ev.clientY - r.height - 10 : ev.clientY + 16) + "px";
+}
+for (const id of ["tiers", "att", "post", "top5"]) {
+  const cv = document.getElementById(id); let drag = null;
+  cv.addEventListener("pointerdown", e => { drag = { x: e.clientX, a: v0, b: v1, moved: false }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    const W = cv.clientWidth, rx = e.clientX - cv.getBoundingClientRect().left;
+    if (drag) { const dx = e.clientX - drag.x; if (Math.abs(dx) > 3) drag.moved = true;
+      if (drag.moved) { const dt = dx / (W - GUT) * (drag.b - drag.a); setView(drag.a - dt, drag.b - dt); }
+      cv.style.cursor = "grabbing"; tip.style.display = "none"; return; }
+    cv.style.cursor = rx > GUT ? "grab" : "default";
+    const p = rx > GUT ? phoneAt(Tm(rx, W)) : null;
+    if (p !== hover) { hover = p; drawTiers(); } showTip(p, e);
+  });
+  cv.addEventListener("pointerup", e => { const d = drag; drag = null; cv.style.cursor = "grab";
+    if (d && !d.moved) { const W = cv.clientWidth, rx = e.clientX - cv.getBoundingClientRect().left; if (rx <= GUT) return;
+      const t = Tm(rx, W), p = phoneAt(t); if (p) play(p.s, p.e); else play(t, v1); } });
+  cv.addEventListener("pointerleave", () => { hover = null; tip.style.display = "none"; drawTiers(); });
+  cv.addEventListener("wheel", e => {
+    const W = cv.clientWidth, rx = e.clientX - cv.getBoundingClientRect().left;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); const t = Tm(Math.max(GUT, rx), W), k = Math.exp(e.deltaY * 0.002);
+      setView(t - (t - v0) * k, t + (v1 - t) * k); }
+    else if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) { e.preventDefault();
+      const d = (e.shiftKey ? e.deltaY : e.deltaX) / (W - GUT) * (v1 - v0); setView(v0 + d, v1 + d); }
+  }, { passive: false });
+}
+const ov = document.getElementById("overview"); let ovDrag = false;
+function ovMove(e) { const r = ov.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * DUR, w = v1 - v0; setView(t - w / 2, t + w / 2); }
+ov.addEventListener("pointerdown", e => { ovDrag = true; ov.setPointerCapture(e.pointerId); ovMove(e); });
+ov.addEventListener("pointermove", e => { if (ovDrag) ovMove(e); });
+ov.addEventListener("pointerup", () => ovDrag = false);
+const zoom = k => { const c = (v0 + v1) / 2, w = (v1 - v0) * k; setView(c - w / 2, c + w / 2); };
+document.getElementById("zoomin").onclick = () => zoom(0.5);
+document.getElementById("zoomout").onclick = () => zoom(2);
+document.getElementById("win").onchange = e => { const w = e.target.value === "all" ? DUR : +e.target.value; setView(v0, v0 + w); };
+document.addEventListener("keydown", e => { if (e.target.tagName === "SELECT") return;
+  if (e.key === " ") { e.preventDefault(); playBtn.click(); }
+  else if (e.key === "ArrowRight") setView(v0 + (v1 - v0) * 0.5, v1 + (v1 - v0) * 0.5);
+  else if (e.key === "ArrowLeft") setView(v0 - (v1 - v0) * 0.5, v1 - (v1 - v0) * 0.5);
+  else if (e.key === "+" || e.key === "=") zoom(0.5);
+  else if (e.key === "-") zoom(2); });
+document.querySelectorAll("details").forEach(d => d.addEventListener("toggle", draw));
+window.addEventListener("resize", draw);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+// page.html#4.2-6 opens on that time span (and the address follows the view, to share a place)
+const m = location.hash.match(/^#(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+if (m) setView(+m[1], +m[2]); else draw();
+let hashTimer = null;
+const _setView = setView;
+setView = (a, b) => { _setView(a, b); clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => history.replaceState(null, "", `#${v0.toFixed(2)}-${v1.toFixed(2)}`), 300); };
+</script>
+</body>
+</html>

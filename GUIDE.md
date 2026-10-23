@@ -7,7 +7,7 @@ JointRecAlign listens to French recordings and writes, for each one, a **Praat T
 - for each phone, the **5 most likely phones** according to the model, with their probabilities.
 
 No transcript is needed. This guide needs no programming knowledge: you copy two commands
-once, and then use a window or Praat.
+once, then type one command per corpus (or use a button in Praat).
 
 ## 1. Install (once, about 10 minutes)
 
@@ -42,7 +42,7 @@ It downloads about 1 to 3 GB of software (several minutes). Finally, download th
 (1.2 GB, also only once):
 
 ```
-JointRecAlign --download
+JointRecAlign download
 ```
 
 The model is stored in a cache folder (`~/Library/Caches/JointRecAlign` on a Mac,
@@ -51,47 +51,87 @@ this step, it is downloaded the first time you transcribe.
 
 ## 2. Transcribe recordings
 
-### With the window
-
-Open a Terminal / PowerShell window and type:
+Open a Terminal / PowerShell window. Type `JointRecAlign transcribe`, a space, then **drag the
+folder of your recordings onto the window** (it writes its path), and press Enter:
 
 ```
-JointRecAlign
+JointRecAlign transcribe /path/to/my_recordings
 ```
 
-A window opens:
+Every audio file of the folder is transcribed (WAV, FLAC, MP3, OGG or AIFF; any sampling rate;
+mono or stereo). The results go to a new folder `JointRecAlign` **inside that folder**, so your
+own TextGrids are never overwritten. You can also give single files, or choose the results
+folder with `-o`:
 
-1. **Add files...** or **Add a folder...** to choose your recordings (WAV, FLAC, MP3, OGG or
-   AIFF; any sampling rate; mono or stereo).
-2. Choose where the results go. By default, a folder `JointRecAlign` is made **next to your
-   recordings**, so your own TextGrids are never overwritten.
-3. Choose the phone symbols: IPA (`ɑ̃ ɛ̃ ɔ̃ œ`) or the model's one-character codes (`@ 1 § 9`).
-4. Click **Run**. The progress appears at the bottom. At the end, click
-   **Open the results folder**.
+```
+JointRecAlign transcribe recording1.wav recording2.wav
+JointRecAlign transcribe my_recordings -o results
+```
+
+**What you see** (an example). First every file is checked, then transcribed, then a summary:
+
+```
+Checking 3 recordings
+  WARNING my_recordings/ABC_02.wav: sampled at 8000 Hz, below the model's 16 kHz: expect lower accuracy
+  ERROR   my_recordings/ABC_03.wav: cannot read the audio (...)
+Checked 3 recordings: 2 can be transcribed, 1 cannot, 1 warnings
+Loading the model
+Running on the CPU
+[1/2] ABC_01: 78.4 s of audio, 543 phones, 41 pauses (12.3 s)
+[2/2] ABC_02: 65.0 s of audio, 466 phones, 35 pauses (10.1 s)
+
+Summary
+  3 recordings: 2 transcribed, 1 NOT transcribed
+  not transcribed: my_recordings/ABC_03.wav: cannot read the audio (...)
+  warning: my_recordings/ABC_02.wav: sampled at 8000 Hz, below the model's 16 kHz: expect lower accuracy
+  results: my_recordings/JointRecAlign
+```
+
+A file that cannot be read never stops the others. The same summary is saved in
+`JointRecAlign.log` in the results folder.
+
+To only **check** the files, without transcribing (fast, no model):
+
+```
+JointRecAlign validate my_recordings
+```
+
+### With plots: `--report`
+
+```
+JointRecAlign transcribe my_recordings --report
+```
+
+also writes one web page per recording, and `index.html` listing them. Double-click
+`index.html` (it opens in your browser, no internet needed): a table of the recordings, sortable,
+with how many phones each has and how many the model was unsure about. Click a name to see:
+
+- the **waveform** with the recognised **phones** and **pauses** under it; hover over a phone to
+  see its 5 candidates, click it to hear it;
+- the **attention** of the model: which phone each moment of the audio is attached to; the
+  line is the path that gives the boundaries;
+- the **phone posteriors**: how probable every phone is at each moment;
+- the **top 5** of each moment.
+
+Drag to scroll, ⌘/Ctrl + mouse wheel to zoom, space to play. The address of the page follows the
+view (e.g. `ABC_01.html#12.5-14.5`): copy it to show someone the same place. The pages play the
+audio from where it was when the report was made: keep the recordings in place.
 
 ### From Praat
 
 Install the Praat plugin once (in a Terminal / PowerShell window):
 
 ```
-JointRecAlign --install-praat-plugin
+JointRecAlign install-praat-plugin
 ```
 
 Restart Praat. Select one or more **Sound** objects in the Objects window, and click
 **JointRecAlign: transcribe...** in the buttons on the right. Praat waits while the model
-works (about a few seconds per minute of audio on a recent computer); then a TextGrid with
-the same name appears next to each Sound. Select a Sound and its TextGrid and click
-**View & Edit**.
+works (a few seconds per minute of audio on a recent computer); then a TextGrid with the same
+name appears next to each Sound. Select a Sound and its TextGrid and click **View & Edit**.
+This suits one recording at a time; for a whole corpus, use the command.
 
-### By typing a command
-
-```
-JointRecAlign my_recordings/
-JointRecAlign recording1.wav recording2.wav
-JointRecAlign my_recordings/ -o results/          (results in the folder results/)
-```
-
-A folder means every audio file in it. `JointRecAlign --help` lists all the options.
+`JointRecAlign --help` and `JointRecAlign transcribe --help` list all the options.
 
 ## 3. Read the results
 
@@ -106,7 +146,9 @@ For each recording `name.wav`, the results folder holds:
   | `top2` ... `top5` | the next candidates, e.g. `p 0.050` |
   | `pauses` | `SIL` on every pause |
 
-- `name.csv`, the same as a table (one row per phone), to open in Excel, LibreOffice or R.
+- `name.csv`, the same as a table (one row per phone), to open in Excel, LibreOffice or R;
+- with `--report`: `name.html` and `index.html` (see above);
+- `JointRecAlign.log`: the summary of the run.
 
 Read the probabilities with care: they are not calibrated. The first phone is often given
 about 0.99 even when it is wrong; but the **order** of the candidates is informative: when the
@@ -129,11 +171,12 @@ To remove the model too, delete its cache folder (see step 1).
 | message | what to do |
 |---|---|
 | `command not found: JointRecAlign` / `uv` | Close the Terminal / PowerShell window and open a new one. If it persists, run `uv tool update-shell`, then open a new window. |
-| `could not download the model` | Check the internet connection and run `JointRecAlign --download` again. |
+| `could not download the model` | Check the internet connection and run `JointRecAlign download` again. |
 | `not a supported audio file` | Convert the file to WAV (in Praat: Read from file, then Save as WAV file). |
 | `<name>: FAILED (...)` | That recording could not be read; the others are still transcribed. |
-| The window does not open (Linux) | `sudo apt install python3-tk`, or use the command. |
-| In Praat, no **JointRecAlign** button | Restart Praat after `JointRecAlign --install-praat-plugin`; the button appears when a Sound is selected. |
+| `<file>: FAILED (...)` or `ERROR ... cannot read the audio` | That recording could not be read; convert it to WAV (in Praat: Read from file, then Save as WAV file). The others are transcribed. |
+| The report plays no sound | The recording was moved or renamed after the report was made; run the command again. |
+| In Praat, no **JointRecAlign** button | Restart Praat after `JointRecAlign install-praat-plugin`; the button appears when a Sound is selected. |
 
 ## Licence
 

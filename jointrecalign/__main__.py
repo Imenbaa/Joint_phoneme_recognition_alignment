@@ -1,4 +1,4 @@
 """`python -m jointrecalign`: same as the JointRecAlign command."""
-from .transcribe_cli import app
+from .transcribe_cli import main
 
-app()
+main()

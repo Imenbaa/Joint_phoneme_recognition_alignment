@@ -29,11 +29,11 @@ dependencies = [
 train = ["datasets", "accelerate", "editdistance", "tensorboard"]
 
 [project.scripts]
-JointRecAlign = "jointrecalign.transcribe_cli:app"    # no argument: the window
-JointRecAlign-transcribe = "jointrecalign.transcribe_cli:main"
+JointRecAlign = "jointrecalign.transcribe_cli:main"
+JointRecAlign-transcribe = "jointrecalign.transcribe_cli:main_transcribe"
 
 [tool.setuptools]
 packages = ["jointrecalign", "jointrecalign.evaluation"]
 
 [tool.setuptools.package-data]
-jointrecalign = ["praat_plugin/*.praat"]
+jointrecalign = ["praat_plugin/*.praat", "report_assets/*.html"]

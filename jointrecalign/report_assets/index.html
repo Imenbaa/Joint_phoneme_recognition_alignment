@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JointRecAlign results</title>
+<style>
+:root { --bg: #f6f5f1; --panel: #fff; --ink: #1d1d1b; --ink2: #55544f; --muted: #8a8983; --line: #e2e0d9;
+  --accent: #2f6fb2; --low: #c0392b; --barbg: #ece9e0; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --panel: #201f1d; --ink: #ecebe6;
+  --ink2: #b4b2aa; --muted: #85837c; --line: #34332f; --accent: #6ea8e6; --low: #ef7d6d; --barbg: #2e2d29; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #161615; --panel: #201f1d; --ink: #ecebe6; --ink2: #b4b2aa; --muted: #85837c;
+  --line: #34332f; --accent: #6ea8e6; --low: #ef7d6d; --barbg: #2e2d29; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 22px 16px 40px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.sub { color: var(--ink2); margin: 2px 0 14px; }
+.stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.stat b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+input { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 10px; width: min(320px, 100%); margin-bottom: 10px; }
+.wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink2); font-size: 12.5px; cursor: pointer; user-select: none; }
+th.sorted::after { content: " ▾"; color: var(--muted); }
+th.sorted.asc::after { content: " ▴"; }
+tr:last-child td { border-bottom: 0; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.bar { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--barbg); vertical-align: middle;
+  margin-left: 8px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--accent); }
+.low { color: var(--low); }
+.failed { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--low);
+  border-radius: 8px; padding: 10px 14px; }
+.failed h2 { font-size: 14px; margin: 0 0 6px; } .failed li { color: var(--ink2); }
+.note { color: var(--muted); font-size: 12px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>JointRecAlign results</h1>
+  <div class="sub">One page per recording: click a name to see its phones, pauses, attention and posteriors.</div>
+  <div class="stats" id="stats"></div>
+  <input id="filter" placeholder="Filter recordings by name" aria-label="Filter recordings by name">
+  <div class="wrap"><table>
+    <thead><tr>
+      <th data-k="name">recording</th><th data-k="duration">duration</th><th data-k="phones">phones</th>
+      <th data-k="pauses">pauses</th><th data-k="pause_time">pause time</th>
+      <th data-k="mean_conf">mean probability</th><th data-k="low_conf">phones under 0.5</th>
+    </tr></thead><tbody id="rows"></tbody></table></div>
+  <div id="failed"></div>
+  <p class="note">The probabilities are the model's own and are not calibrated; "phones under 0.5" points to the
+    places where the model hesitates most.</p>
+</main>
+<script>
+"use strict";
+const D = /*__DATA__*/null;
+const fmt = t => { const m = Math.floor(t / 60), s = Math.round(t - 60 * m); return `${m}:${String(s).padStart(2, "0")}`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tot = D.rows.reduce((a, r) => (a.d += r.duration, a.p += r.phones, a.s += r.pauses, a), { d: 0, p: 0, s: 0 });
+document.getElementById("stats").innerHTML = [[D.rows.length, "recordings"], [fmt(tot.d), "audio"], [tot.p, "phones"],
+  [tot.s, "pauses"], [D.failed.length, "failed"]].map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
+let key = "name", asc = true;
+function render() {
+  const q = document.getElementById("filter").value.toLowerCase();
+  const rows = D.rows.filter(r => r.name.toLowerCase().includes(q)).sort((a, b) =>
+    (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * (asc ? 1 : -1));
+  document.getElementById("rows").innerHTML = rows.map(r => `<tr>
+    <td><a href="${encodeURIComponent(r.name)}.html">${esc(r.name)}</a></td><td>${fmt(r.duration)}</td><td>${r.phones}</td>
+    <td>${r.pauses}</td><td>${r.pause_time.toFixed(1)} s</td>
+    <td>${r.mean_conf === null ? "–" : r.mean_conf.toFixed(2)}<span class="bar"><i style="width:${(r.mean_conf || 0) * 100}%"></i></span></td>
+    <td class="${r.phones && r.low_conf / r.phones > 0.2 ? "low" : ""}">${r.low_conf}${r.phones ? ` (${Math.round(100 * r.low_conf / r.phones)} %)` : ""}</td></tr>`).join("");
+  document.querySelectorAll("th").forEach(th => { th.classList.toggle("sorted", th.dataset.k === key); th.classList.toggle("asc", asc); });
+}
+document.querySelectorAll("th").forEach(th => th.onclick = () => { if (key === th.dataset.k) asc = !asc; else { key = th.dataset.k; asc = key === "name"; } render(); });
+document.getElementById("filter").oninput = render;
+if (D.failed.length) document.getElementById("failed").innerHTML = `<div class="failed"><h2>Not transcribed</h2><ul>` +
+  D.failed.map(([f, w]) => `<li><b>${esc(f)}</b>: ${esc(w)}</li>`).join("") + `</ul></div>`;
+render();
+</script>
+</body>
+</html>
