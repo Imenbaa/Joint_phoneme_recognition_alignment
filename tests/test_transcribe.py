@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU tests of reco_align.transcribe (no data, no pretrained weights):
+"""CPU tests of jointrecalign.transcribe (no data, no pretrained weights):
 
     python tests/test_transcribe.py
 
@@ -28,7 +28,7 @@ import soundfile as sf
 import torch
 from transformers import Wav2Vec2Config
 
-from reco_align import transcribe as TR
+from jointrecalign import transcribe as TR
 
 SR = 16000
 torch.manual_seed(0)
@@ -143,7 +143,7 @@ def test_writers():
 
 def tiny_model_dir(d):
     """A tiny random latent-SIL model (as tests/test_model.py) saved with a vocabulary."""
-    from reco_align.model import Wav2Vec2ForCTCPoolContrastive
+    from jointrecalign.model import Wav2Vec2ForCTCPoolContrastive
     cfg = Wav2Vec2Config(
         vocab_size=12, pad_token_id=0, hidden_size=32, num_hidden_layers=3,
         num_attention_heads=2, intermediate_size=64, conv_dim=(16,) * 7,
@@ -205,7 +205,7 @@ def test_end_to_end():
         TR.write_textgrid(f"{d}/rec.TextGrid", phones, pauses, dur)
         TR.write_csv(f"{d}/rec.csv", phones)
         check_outputs(f"{d}/rec.TextGrid", f"{d}/rec.csv", phones, pauses, dur)
-        # command line, as installed (`reco-align-transcribe`) and from the repository root
+        # command line, as installed (`JointRecAlign-transcribe`) and from the repository root
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         r = subprocess.run([sys.executable, os.path.join(root, "transcribe.py"), "--model", f"{d}/model",
                             "--device", "cpu", "--symbols", "model", "-o", f"{d}/out", d],

@@ -1,7 +1,7 @@
 """Phone transcription and alignment of recordings, with the top-5 candidates of
 each phone, as Praat TextGrids. No transcript is needed.
 
-    reco-align-transcribe --model runs/aligner_10ms_sil/checkpoint-26000 \\
+    JointRecAlign-transcribe --model runs/aligner_10ms_sil/checkpoint-26000 \\
         -o results/ recording1.wav recording2.wav [folder/ ...]
 
 (or `python transcribe.py ...` from the repository root.)
@@ -14,7 +14,7 @@ Audio: WAV, FLAC, MP3, OGG or AIFF, any sampling rate, mono or stereo.
 
 The probabilities are the model's own (not calibrated): the top-1 is often given
 about 0.99 even when it is wrong, but the order of the candidates is informative.
-See reco_align/transcribe.py for the method.
+See jointrecalign/transcribe.py for the method.
 """
 import argparse
 import json

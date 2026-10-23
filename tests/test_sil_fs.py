@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""CPU tests of reco_align.sil_fs (no model): python tests/test_sil_fs.py
+"""CPU tests of jointrecalign.sil_fs (no model): python tests/test_sil_fs.py
 
 1. logZ == brute force over all valid segmentations (positions all/edges/word/none,
    min frames 1-3, several entry costs)
 2. gamma == d logZ / d emissions (autograd), rows sum to 1 over valid frames
 3. batching / padding gives the per-utterance values
 4. SIL everywhere, k = 1, entry cost 0, SIL column = RAD-TTS blank
-   == ForwardSumLoss (CTCLoss) of reco_align/modules.py, i.e. L_FS without SIL
+   == ForwardSumLoss (CTCLoss) of jointrecalign/modules.py, i.e. L_FS without SIL
 5. viterbi score == brute-force max, path is a valid segmentation
 """
 import itertools
@@ -15,7 +15,7 @@ import math
 import numpy as np
 import torch
 
-from reco_align import sil_fs as SF
+from jointrecalign import sil_fs as SF
 
 torch.manual_seed(0)
 rng = np.random.default_rng(0)
@@ -124,7 +124,7 @@ def test_batching():
 
 
 def test_ctc_equivalence():
-    from reco_align.modules import ForwardSumLoss
+    from jointrecalign.modules import ForwardSumLoss
     B, Ns, Ts = 3, [4, 6, 3], [15, 20, 9]
     P, Tm = max(Ns), max(Ts)
     energy = torch.randn(B, Tm, P) * 3

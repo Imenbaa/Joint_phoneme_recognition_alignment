@@ -44,7 +44,7 @@ rate.
 
 ### Joint recognition + alignment model (stage 3)
 
-`reco_align.model.Wav2Vec2ForCTCPoolContrastive`, built on the CTC 10 ms model:
+`jointrecalign.model.Wav2Vec2ForCTCPoolContrastive`, built on the CTC 10 ms model:
 
 ```
 waveform ─► wav2vec2 encoder ─┬─► CTC head ──────────────────────────► phones        (L_CTC)
@@ -76,7 +76,7 @@ waveform ─► wav2vec2 encoder ─┬─► CTC head ────────�
     and all share one learned key.
   - Entering a slot costs log p = −2, and a used SIL lasts at least 4 frames (40 ms).
   - The ForwardSum dynamic programming sums over paths with and without each SIL
-    (`reco_align/sil_fs.py`).
+    (`jointrecalign/sil_fs.py`).
   - L_m takes its attention from the forward-backward occupancy.
   - At inference, a Viterbi pass over the same topology gives phone boundaries and pauses.
 - **Gradient routing.**
@@ -93,7 +93,7 @@ At inference the model aligns its own CTC decode, so it needs no transcription.
 Python ≥ 3.10. A CUDA GPU for training; transcription also runs on CPU.
 
 **To transcribe recordings only**, one command installs the package, its dependencies and the
-`reco-align-transcribe` command:
+`JointRecAlign-transcribe` command:
 
 ```bash
 pip install git+https://github.com/Imenbaa/Joint_phoneme_recognition_alignment.git
@@ -106,16 +106,16 @@ git clone https://github.com/Imenbaa/Joint_phoneme_recognition_alignment.git
 cd Joint_phoneme_recognition_alignment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # versions used to train the models
-pip install -e .                    # the reco_align package
+pip install -e .                    # the jointrecalign package
 ```
 
 The scripts at the repository root (`train_ctc.py`, `train_aligner.py`, `evaluate.py`,
 `transcribe.py`) also run from the repository root without `pip install -e .`.
-`pip install -e .` also installs the `reco-align-transcribe` command.
+`pip install -e .` also installs the `JointRecAlign-transcribe` command.
 
 ## Transcribing recordings
 
-`reco-align-transcribe` (or `python transcribe.py` from the repository root) gives, for each
+`JointRecAlign-transcribe` (or `python transcribe.py` from the repository root) gives, for each
 recording, the phones the model hears, their boundaries, the pauses, and the model's five best
 candidates for each phone. It runs on GPU or CPU.
 
@@ -126,7 +126,7 @@ licence CC BY-NC 4.0), then unzip it:
 ```bash
 curl -LO https://github.com/Imenbaa/Joint_phoneme_recognition_alignment/releases/download/v0.1.0/aligner_10ms_sil_alpha0.1.zip
 unzip aligner_10ms_sil_alpha0.1.zip
-reco-align-transcribe --model aligner_10ms_sil_alpha0.1 \
+JointRecAlign-transcribe --model aligner_10ms_sil_alpha0.1 \
     -o results/ recording1.wav recording2.wav recordings_folder/
 ```
 
@@ -159,7 +159,7 @@ For each recording, in `-o`:
 | `--vocab_path` | phone vocabulary (default: `vocab.json` in the checkpoint) |
 | `--device cuda` / `cpu` | default: `cuda` when available |
 
-How it works (`reco_align/transcribe.py`):
+How it works (`jointrecalign/transcribe.py`):
 1. The recording is cut into pieces of at most 10 s, back to back, so no audio is dropped.
    [Silero VAD](https://github.com/snakers4/silero-vad) finds the pauses; each cut goes in the
    middle of the latest pause within 10 s (or, with no pause, where speech is least likely).
@@ -359,7 +359,7 @@ python evaluate.py --manifest manifest.json --out_dir eval/ --method ctcfa_conti
   starting at t₀ gives a boundary at t₀ + f·stride + (RF − stride)/2. That is +7.5 ms at 10 ms
   and +2.5 ms at 20 ms. The same rule is used for every method.
 
-**Metrics** (`reco_align/evaluation/metrics.py`):
+**Metrics** (`jointrecalign/evaluation/metrics.py`):
 - boundary precision, recall and F1 within 10, 20 and 50 ms (main score: F1@20);
 - median, mean and 90th percentile of the absolute boundary error, and rate of errors > 50 ms;
 - signed shift of phone starts and ends;
@@ -396,9 +396,9 @@ train_ctc.py              stages 0-2: data preparation, CTC fine-tuning (20 or 1
 train_aligner.py          stage 3: joint recognition + alignment model
 evaluate.py               alignment evaluation on a manifest
 make_manifest.py          evaluation manifest from audio + TextGrids (WhisperX VAD chunks)
-transcribe.py             recordings -> TextGrids (= reco-align-transcribe)
+transcribe.py             recordings -> TextGrids (= JointRecAlign-transcribe)
 recipes/                  one script per stage, with the settings of the trained models
-reco_align/
+jointrecalign/
   transcribe.py           Silero chunking, decoding, top-5 candidates, TextGrid / CSV writers
   transcribe_cli.py       command line of transcribe.py
   modules.py              ForwardSum loss, ConvBank, cross-attention, prior helpers

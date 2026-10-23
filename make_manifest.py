@@ -4,7 +4,7 @@ TextGrids with a phone tier.
 
 For every <audio_dir>/**/<id>.wav with a TextGrid <textgrid_dir>/<id><suffix>:
   chunks              WhisperX VAD chunks of at most --max_chunk_dur seconds
-                      (reco_align/evaluation/vad_chunking.py)
+                      (jointrecalign/evaluation/vad_chunking.py)
   ref_intervals       the phone intervals of --tier, labels mapped with --phone_map;
                       pause and skipped labels are left out
   pause_intervals     intervals whose label is in --pause_labels (used by the SIL scores)
@@ -33,7 +33,7 @@ import soundfile as sf
 import tgt
 import torch
 
-from reco_align.evaluation.vad_chunking import vad_chunk_with_timestamps
+from jointrecalign.evaluation.vad_chunking import vad_chunk_with_timestamps
 
 SR = 16000
 PAUSE_LABELS = ["", "SIL", "sil", "spn", "SP", "<SIL>", "_"]

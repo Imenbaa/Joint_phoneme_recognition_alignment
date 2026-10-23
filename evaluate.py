@@ -2,7 +2,7 @@
 """Score checkpoints as phone aligners on an evaluation manifest.
 
 The model aligns its own CTC greedy decode; boundaries are compared with the
-manifest's reference intervals (format: reco_align/evaluation/attention_eval.py).
+manifest's reference intervals (format: jointrecalign/evaluation/attention_eval.py).
 
     python evaluate.py --manifest test_manifest.json --out_dir eval/ \\
         runs/aligner_10ms_sil/checkpoint-43000 [more checkpoints ...]
@@ -31,11 +31,11 @@ import pickle
 import torch
 from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2FeatureExtractor
 
-from reco_align.model import Wav2Vec2ForCTCPoolContrastive
-from reco_align.evaluation import sil_eval
-from reco_align.evaluation.attention_eval import run_manifest, duration_fidelity
-from reco_align.evaluation.ctcfa_eval import run_manifest_ctcfa
-from reco_align.evaluation.metrics import compute_metrics, align_sequences
+from jointrecalign.model import Wav2Vec2ForCTCPoolContrastive
+from jointrecalign.evaluation import sil_eval
+from jointrecalign.evaluation.attention_eval import run_manifest, duration_fidelity
+from jointrecalign.evaluation.ctcfa_eval import run_manifest_ctcfa
+from jointrecalign.evaluation.metrics import compute_metrics, align_sequences
 
 
 def main():

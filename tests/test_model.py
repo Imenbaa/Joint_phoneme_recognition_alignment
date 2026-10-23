@@ -16,9 +16,9 @@ import numpy as np
 import torch
 from transformers import Wav2Vec2Config, Wav2Vec2FeatureExtractor
 
-from reco_align import sil_fs
-from reco_align.evaluation.attention_eval import dtw_path
-from reco_align.model import Wav2Vec2ForCTCPoolContrastive, frame_log_energy
+from jointrecalign import sil_fs
+from jointrecalign.evaluation.attention_eval import dtw_path
+from jointrecalign.model import Wav2Vec2ForCTCPoolContrastive, frame_log_energy
 
 SR = 16000
 torch.manual_seed(0)

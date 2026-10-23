@@ -31,7 +31,7 @@ Evaluation
 ----------
 PER on the validation split from the CTC head's greedy decode, every
 --eval_steps. With --eval_manifest, the checkpoint is also scored as an
-aligner on that manifest (see reco_align/evaluation) and the boundary metrics
+aligner on that manifest (see jointrecalign/evaluation) and the boundary metrics
 are logged to TensorBoard under heldout/. They are only logged: no checkpoint
 is selected on them.
 
@@ -61,7 +61,7 @@ from transformers import (
 from transformers.models.wav2vec2.modeling_wav2vec2 import _compute_mask_indices
 from transformers.trainer_utils import get_last_checkpoint
 
-from reco_align.model import Wav2Vec2ForCTCPoolContrastive, initialize_quantizer
+from jointrecalign.model import Wav2Vec2ForCTCPoolContrastive, initialize_quantizer
 
 
 # =========================
@@ -830,14 +830,14 @@ class EvalManifestCallback(TrainerCallback):
         if (self._n - 1) % self.every:
             return
         # frame stride and input rate are read from the model config
-        from reco_align.evaluation.attention_eval import run_manifest, duration_fidelity
-        from reco_align.evaluation.metrics import compute_metrics, align_sequences
+        from jointrecalign.evaluation.attention_eval import run_manifest, duration_fidelity
+        from jointrecalign.evaluation.metrics import compute_metrics, align_sequences
 
         step = int(state.global_step)
         m = getattr(self.trainer.model, "module", self.trainer.model)
         if getattr(m, "use_sil", False):
             try:
-                from reco_align.evaluation import sil_eval
+                from jointrecalign.evaluation import sil_eval
                 res, _, _ = sil_eval.evaluate(self.trainer.model, self.fe, self.tok, self.manifest,
                                               device="cuda", max_files=self.max_files)
                 w = self.trainer._ensure_tb_writer()
@@ -1040,7 +1040,7 @@ def parse_args():
     p.add_argument("--viz_every_n_steps", type=int, default=500)
     p.add_argument("--viz_max_samples", type=int, default=2)
     p.add_argument("--eval_manifest", type=str, default=None,
-                   help="Evaluation manifest (see reco_align/evaluation/attention_eval.py): "
+                   help="Evaluation manifest (see jointrecalign/evaluation/attention_eval.py): "
                         "alignment metrics logged at every --eval_manifest_every_n_evals-th eval.")
     p.add_argument("--eval_manifest_every_n_evals", type=int, default=1)
     # Latent optional SIL. All off by default.
