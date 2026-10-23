@@ -129,7 +129,7 @@ def main(argv=None):
             return
         if a.download:
             from .download import default_model
-            default_model()
+            print(f"Model ready: {default_model()}")
             return
         if not a.inputs:
             ap.error("give audio files or folders (or run JointRecAlign with nothing after it to open the window)")
