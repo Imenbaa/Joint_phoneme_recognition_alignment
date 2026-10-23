@@ -8,7 +8,7 @@
 :root {
   --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --ink2: #55544f; --muted: #8a8983;
   --line: #e2e0d9; --accent: #2f6fb2; --accent-soft: rgba(47,111,178,.14);
-  --phone: #ece9e0; --phone-ink: #1d1d1b; --low: #c0392b; --pause: #b9b5a8;
+  --phone: #ece9e0; --phone-ink: #1d1d1b; --pause: #b9b5a8;
   --wave: #4b5d73; --play: #d1495b; --view: rgba(47,111,178,.18);
   color-scheme: light;
 }
@@ -16,7 +16,7 @@
   :root:not([data-theme="light"]) {
     --bg: #161615; --panel: #201f1d; --ink: #ecebe6; --ink2: #b4b2aa; --muted: #85837c;
     --line: #34332f; --accent: #6ea8e6; --accent-soft: rgba(110,168,230,.18);
-    --phone: #2e2d29; --phone-ink: #ecebe6; --low: #ef7d6d; --pause: #5b5850;
+    --phone: #2e2d29; --phone-ink: #ecebe6; --pause: #5b5850;
     --wave: #9fb4cc; --play: #ff7a8a; --view: rgba(110,168,230,.22);
     color-scheme: dark;
   }
@@ -24,7 +24,7 @@
 :root[data-theme="dark"] {
   --bg: #161615; --panel: #201f1d; --ink: #ecebe6; --ink2: #b4b2aa; --muted: #85837c;
   --line: #34332f; --accent: #6ea8e6; --accent-soft: rgba(110,168,230,.18);
-  --phone: #2e2d29; --phone-ink: #ecebe6; --low: #ef7d6d; --pause: #5b5850;
+  --phone: #2e2d29; --phone-ink: #ecebe6; --pause: #5b5850;
   --wave: #9fb4cc; --play: #ff7a8a; --view: rgba(110,168,230,.22);
   color-scheme: dark;
 }
@@ -99,7 +99,7 @@ canvas { display: block; width: 100%; touch-action: none; }
   <div class="panel" style="padding:8px 8px 4px"><canvas id="overview"></canvas></div>
 
   <details class="panel" open>
-    <summary><h2>Recording</h2><span class="what">waveform, recognised phones (red outline: probability under 0.5) and pauses</span></summary>
+    <summary><h2>Recording</h2><span class="what">waveform, recognised phones and pauses</span></summary>
     <div class="cv"><canvas id="tiers"></canvas></div>
   </details>
 
@@ -234,9 +234,8 @@ function drawTiers() {
   // phones
   const y0 = WV + 4;
   for (const p of phones) { if (p.e < v0 || p.s > v1) continue;
-    const a = X(p.s, W), b = X(p.e, W), low = p.c.length && p.c[0][1] < 0.5;
+    const a = X(p.s, W), b = X(p.e, W);
     x.fillStyle = p === hover ? css("--accent-soft") : css("--phone"); x.fillRect(a + 0.5, y0, Math.max(1, b - a - 1), PH);
-    if (low) { x.strokeStyle = css("--low"); x.lineWidth = 1.5; x.strokeRect(a + 1, y0 + .75, Math.max(1, b - a - 2), PH - 1.5); }
     if (b - a > 9) { x.fillStyle = css("--phone-ink"); x.font = (b - a > 26 ? "15px" : "12px") + " -apple-system, Segoe UI, Roboto, sans-serif";
       x.textAlign = "center"; x.fillText(p.ph, (a + b) / 2, y0 + PH / 2 + 5); x.textAlign = "left"; } }
   // pauses
@@ -334,9 +333,7 @@ function draw() {
 
 // ---------- header ----------
 document.getElementById("title").textContent = D.name;
-const conf = phones.filter(p => p.c.length).map(p => p.c[0][1]);
-const stats = [[fmt(DUR).replace(/\.\d\d$/, ""), "duration"], [phones.length, "phones"], [D.pauses.length, "pauses"],
-  [conf.filter(c => c < 0.5).length, "phones under 0.5"]];
+const stats = [[fmt(DUR).replace(/\.\d\d$/, ""), "duration"], [phones.length, "phones"], [D.pauses.length, "pauses"]];
 document.getElementById("stats").innerHTML = stats.map(([a, b]) => `<div class="stat"><b>${a}</b><span>${b}</span></div>`).join("");
 
 // ---------- audio ----------
