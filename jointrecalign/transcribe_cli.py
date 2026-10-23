@@ -167,6 +167,10 @@ def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chun
     refused before (listed in the report index); ref: the --reference options.
     -> (written TextGrids, failures [(file, reason)], comparison counts [(file, counts)],
         reference labels outside the model's phones {label: count})."""
+    # transcription never goes online: the model loads from a local folder (download.py fetches it, once,
+    # with urllib), so the Hugging Face libraries are kept offline (read when they are imported)
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     warnings.filterwarnings("ignore")
     # a harmless torch notice on macOS ("Redirects are currently not supported")
     logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
