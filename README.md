@@ -170,6 +170,7 @@ For each recording, in a folder `JointRecAlign/` next to the recording (or in `-
 |---|---|
 | `-o folder` | where the results go (default: `JointRecAlign/` next to each recording) |
 | `--report` | also the HTML pages (about 0.6 MB per minute of audio) |
+| `--copy_audio` | with `--report`: copy each recording into `<results>/audio/`, so the pages still play it after the results folder is moved or copied to another computer |
 | `--model folder` | another model (default: the released one, downloaded the first time) |
 | `--symbols ipa` (default) / `model` | `ipa` writes the nasal vowels and œ in IPA (`ɑ̃ ɛ̃ ɔ̃ œ`); `model` keeps the model's one-character codes (`@ 1 § 9`) |
 | `--phone_map map.json` | your own labels, applied last, e.g. `{"ə": "ø"}` for a corpus that writes the schwa `ø` |

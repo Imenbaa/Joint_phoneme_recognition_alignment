@@ -281,6 +281,14 @@ def test_end_to_end():
             os.chmod(f"{d}/ro", 0o755)
         assert r.returncode == 1 and "no permission to write the results" in r.stdout, r.stdout + r.stderr
         assert "Loading the model" not in r.stdout and not os.path.exists(f"{d}/ro/JointRecAlign"), r.stdout
+        # --copy_audio: the page plays a copy in <results>/audio/, so the results folder can be moved
+        r = subprocess.run([sys.executable, "-m", "jointrecalign", "transcribe", "--model", f"{d}/model",
+                            "--device", "cpu", "--report", "--copy_audio", "-o", f"{d}/moved", f"{d}/rec.wav"],
+                           capture_output=True, text=True, cwd=root)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert open(f"{d}/moved/audio/rec.wav", "rb").read() == open(f"{d}/rec.wav", "rb").read()
+        page = json.loads(re.search(r"const D = (\{.*?\});\n", open(f"{d}/moved/rec.html", encoding="utf-8").read()).group(1))
+        assert page["audio"] == "audio/rec.wav", page["audio"]
     print(f"end to end ok ({len(phones)} phones, {len(pauses)} pauses)")
 
 

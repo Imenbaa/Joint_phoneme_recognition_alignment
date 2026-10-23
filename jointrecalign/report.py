@@ -144,10 +144,11 @@ def _audio_ref(audio_path, out_dir):
         return "file:///" + os.path.abspath(audio_path).replace(os.sep, "/").lstrip("/")
 
 
-def write_page(path, audio_path, phones, pauses, dur, trace, tok, symbol_map, comparison=None):
+def write_page(path, audio_path, phones, pauses, dur, trace, tok, symbol_map, comparison=None, play=None):
+    """play: the audio file the page plays (default audio_path), e.g. a copy next to the page."""
     name = os.path.splitext(os.path.basename(path))[0]
     wav = E.load_audio(audio_path)
-    data = page_data(name, _audio_ref(audio_path, os.path.dirname(path)), wav, phones, pauses, dur,
+    data = page_data(name, _audio_ref(play or audio_path, os.path.dirname(path)), wav, phones, pauses, dur,
                      trace, tok, symbol_map, comparison)
     js = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     page = (_template("page.html").replace("__TITLE__", html.escape(name))

@@ -48,7 +48,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .range { font-variant-numeric: tabular-nums; color: var(--ink2); margin-left: 4px; }
 .switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink2); cursor: pointer; margin-left: 6px; }
 .switch input { accent-color: var(--ref); width: 15px; height: 15px; margin: 0; }
-.reflegend { display: none; } body.has-ref .reflegend { display: flex; }
+body:not(.has-ref) .reflegend { display: none; }
 #tip .ref { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--ink2); }
 .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; }

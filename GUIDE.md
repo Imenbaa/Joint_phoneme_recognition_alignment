@@ -125,8 +125,19 @@ with how many phones each has and how many the model was unsure about. Click a n
 - the **top 5** of each moment.
 
 Drag to scroll, ⌘/Ctrl + mouse wheel to zoom, space to play. The address of the page follows the
-view (e.g. `ABC_01.html#12.5-14.5`): copy it to show someone the same place. The pages play the
-audio from where it was when the report was made: keep the recordings in place.
+view (e.g. `ABC_01.html#12.5-14.5`): copy it to show someone the same place.
+
+Open the pages in a web browser (Safari, Chrome, Firefox, Edge). Other viewers, such as
+JupyterLab's, block the plots and the sound.
+
+The pages play the audio from where it was when the report was made, so keep the recordings in
+place. If you want to move the results, or copy them to another computer (for example from a
+server to your laptop), add `--copy_audio`: each recording is then copied into an `audio` folder
+inside the results, and the pages play that copy.
+
+```
+JointRecAlign transcribe my_recordings --report --copy_audio -o results
+```
 
 ### Comparing with your own transcription: `--reference`
 
@@ -209,7 +220,8 @@ To remove the model too, delete its cache folder (see step 1).
 | `not a supported audio file` | Convert the file to WAV (in Praat: Read from file, then Save as WAV file). |
 | `<name>: FAILED (...)` | That recording could not be read; the others are still transcribed. |
 | `<file>: FAILED (...)` or `ERROR ... cannot read the audio` | That recording could not be read; convert it to WAV (in Praat: Read from file, then Save as WAV file). The others are transcribed. |
-| The report plays no sound | The recording was moved or renamed after the report was made; run the command again. |
+| The report shows no plots | Open it in a web browser (double-click `index.html`); viewers such as JupyterLab block the plots (in JupyterLab, "Trust HTML" shows them). |
+| The report plays no sound | The recording was moved or renamed after the report was made, or the results were copied elsewhere: run the command again with `--copy_audio`. |
 | In Praat, no **JointRecAlign** button | Restart Praat after `JointRecAlign install-praat-plugin`; the button appears when a Sound is selected. |
 
 ## Licence

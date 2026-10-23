@@ -4,6 +4,7 @@ of French recordings, as Praat TextGrids. No transcript is needed.
     JointRecAlign validate recordings/              check the audio files, without the model
     JointRecAlign transcribe recordings/ [-o out/]  check, then transcribe
     JointRecAlign transcribe recordings/ --report   also an HTML page per recording (plots)
+                                  [--copy_audio]    ... playing a copy of the recording in out/audio/
     JointRecAlign transcribe recordings/ --reference textgrids/
                                                     compare with reference phone TextGrids
     JointRecAlign download                          download the model now (else: on first use)
@@ -29,6 +30,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 import time
 import warnings
@@ -177,9 +179,10 @@ class Log:
 
 
 def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chunk=10.0, device=None,
-        log=print, vocab_path=None, report=False, rejected=(), ref=None):
+        log=print, vocab_path=None, report=False, rejected=(), ref=None, copy_audio=False):
     """Transcribe the files; one failing file does not stop the others. rejected: [(file, reason)]
-    refused before (listed in the report index); ref: the --reference options.
+    refused before (listed in the report index); ref: the --reference options; copy_audio: the
+    report pages play a copy of each recording in <results>/audio/.
     -> (written TextGrids, failures [(file, reason)], comparison counts [(file, counts)],
         reference labels outside the model's phones {label: count})."""
     # transcription never goes online: the model loads from a local folder (download.py fetches it, once,
@@ -230,8 +233,14 @@ def run(files, out_dir=None, model=None, symbols="ipa", phone_map=None, max_chun
                     cmp_ = None                       # reported by the check
             if report:
                 from . import report as R
+                play = None
+                if copy_audio:
+                    play = os.path.join(d, "audio", os.path.basename(path))
+                    os.makedirs(os.path.dirname(play), exist_ok=True)
+                    if not os.path.exists(play) or not os.path.samefile(path, play):
+                        shutil.copyfile(path, play)
                 R.write_page(os.path.join(d, name + ".html"), path, phones, pauses, dur, trace, tok, symbol_map,
-                             cmp_)
+                             cmp_, play)
                 pages.setdefault(d, []).append(R.summary(name, phones, pauses, dur, cmp_ and cmp_[2]))
         except Exception as e:
             failed.append((path, str(e).splitlines()[0] if str(e) else type(e).__name__))
@@ -283,7 +292,8 @@ def transcribe_command(a, log):
     if todo:
         t = time.time()
         done, failed, compared, unknown = run(todo, a.out_dir, a.model, a.symbols, a.phone_map, a.max_chunk,
-                                              a.device, log, a.vocab_path, a.report, rejected, ref)
+                                              a.device, log, a.vocab_path, a.report, rejected, ref,
+                                              a.copy_audio)
         log(f"Time: {time.time() - t:.0f} s")
     failed = rejected + failed
     log("")
@@ -359,6 +369,9 @@ def parser():
             continue
         p.add_argument("--report", action="store_true",
                        help="also write an HTML page per recording with the plots, and index.html")
+        p.add_argument("--copy_audio", action="store_true",
+                       help="with --report: copy each recording into <results>/audio/, so that the pages play "
+                            "it wherever the results folder is moved or copied")
         p.add_argument("--symbols", choices=("ipa", "model"), default="ipa",
                        help="ipa: nasal vowels and œ in IPA (ɑ̃ ɛ̃ ɔ̃ œ); model: the model's one-character codes")
         p.add_argument("--phone_map", default=None,
