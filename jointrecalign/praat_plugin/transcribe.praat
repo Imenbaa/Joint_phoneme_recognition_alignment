@@ -37,6 +37,7 @@ for i to n
     deleteFile: file$[i] + ".TextGrid"
     deleteFile: file$[i] + ".csv"
 endfor
+deleteFile: folder$ + "/JointRecAlign.log"
 selectObject: sound[1], textgrid[1]
 for i from 2 to n
     plusObject: sound[i], textgrid[i]
