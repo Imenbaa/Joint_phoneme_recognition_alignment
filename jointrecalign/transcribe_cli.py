@@ -63,6 +63,15 @@ def out_dir_for(path, out_dir=None):
     return out_dir or os.path.join(os.path.dirname(os.path.abspath(path)), OUT_NAME)
 
 
+def writable(folder):
+    """Whether the results folder can be written to: the folder itself if it exists, else the
+    nearest existing folder above it (where it would be created)."""
+    d = os.path.abspath(folder)
+    while not os.path.exists(d) and os.path.dirname(d) != d:
+        d = os.path.dirname(d)
+    return os.path.isdir(d) and os.access(d, os.W_OK | os.X_OK)
+
+
 def check_file(path):
     """-> [(level, message)] for one recording; level "error" (cannot be transcribed) or "warning"."""
     import numpy as np
@@ -118,12 +127,18 @@ def check_reference(path, out_dir, ref):
 def validate(files, out_dir=None, log=print, ref=None):
     """Check every file (and its reference TextGrid, with ref); -> {path: [(level, message)]}
     for the files with a problem."""
-    issues, seen = {}, {}
+    issues, seen, can_write = {}, {}, {}
     for path in files:
         found = check_file(path)
+        d = out_dir_for(path, out_dir)
+        if d not in can_write:
+            can_write[d] = writable(d)
+        if not can_write[d]:
+            found.append(("error", f"no permission to write the results in {d}: "
+                                   "choose a results folder with -o, e.g. -o ~/JointRecAlign_results"))
         if ref and not any(lv == "error" for lv, _ in found):
             found += check_reference(path, out_dir, ref)
-        key = (out_dir_for(path, out_dir), os.path.splitext(os.path.basename(path))[0].lower())
+        key = (d, os.path.splitext(os.path.basename(path))[0].lower())
         if key in seen:
             found.append(("error", f"same name as {seen[key]}: its results would be overwritten "
                                    "(rename one of them, or give each folder its own -o)"))
@@ -295,7 +310,7 @@ def transcribe_command(a, log):
             top = ", ".join(f"{k!r} ({n})" for k, n in sorted(unknown.items(), key=lambda x: -x[1])[:12])
             log(f"  warning: reference labels that are not phones of the model: {top}. They count as errors; "
                 "map them with --ref_map, or list non-phone labels in --pause_labels / --skip_labels")
-    made = [d for d in sorted({out_dir_for(p, a.out_dir) for p in files}) if os.path.isdir(d)]
+    made = [d for d in sorted({out_dir_for(p, a.out_dir) for p in files}) if os.path.isdir(d) and writable(d)]
     for d in made:
         log(f"  results: {d}" + (f"  (report: {os.path.join(d, 'index.html')})" if a.report else "")
             + ("  (comparison.csv)" if os.path.exists(os.path.join(d, "comparison.csv")) and compared else ""))

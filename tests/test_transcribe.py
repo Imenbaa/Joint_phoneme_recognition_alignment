@@ -23,6 +23,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -269,6 +270,17 @@ def test_end_to_end():
         # validate alone: no model, same check
         r = subprocess.run([sys.executable, "-m", "jointrecalign", "validate", d], capture_output=True, text=True, cwd=root)
         assert r.returncode == 1 and "1 can be transcribed, 1 cannot" in r.stdout, r.stdout + r.stderr
+        # a read-only recordings folder (a shared corpus) without -o: refused by the check, before the model
+        os.makedirs(f"{d}/ro")
+        shutil.copy(f"{d}/rec.wav", f"{d}/ro/rec.wav")
+        os.chmod(f"{d}/ro", 0o555)
+        try:
+            r = subprocess.run([sys.executable, "-m", "jointrecalign", "transcribe", "--model", f"{d}/model",
+                                "--device", "cpu", f"{d}/ro"], capture_output=True, text=True, cwd=root)
+        finally:
+            os.chmod(f"{d}/ro", 0o755)
+        assert r.returncode == 1 and "no permission to write the results" in r.stdout, r.stdout + r.stderr
+        assert "Loading the model" not in r.stdout and not os.path.exists(f"{d}/ro/JointRecAlign"), r.stdout
     print(f"end to end ok ({len(phones)} phones, {len(pauses)} pauses)")
 
 
